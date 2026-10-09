@@ -25,8 +25,19 @@ SECRET_KEY = 'django-insecure-1+icsnp2!842vrd98+y_c7#o%=1%tc!9ol=1i-5=vg8i8^o@+2
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [
+    'snipergo-production.up.railway.app',
+     "127.0.0.1",
+    "localhost",
+]
 
+CSRF_TRUSTED_ORIGINS = [
+    # "https://fiber-production-0802.up.railway.app",
+    "https://snipergo-production.up.railway.app",
+ 
+
+]
+snipergo-production.up.railway.app
 
 # Application definition
 
