@@ -1,16 +1,14 @@
-from django.test import TestCase
-
-# Create your tests here.
-
 from datetime import timedelta
+from io import BytesIO
 from tempfile import TemporaryDirectory
 
 from django.core.exceptions import ValidationError
+from django.core.files.storage import FileSystemStorage
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase, override_settings
+from django.test import Client, TestCase, override_settings
 from django.urls import reverse
-from django.test import Client
 from django.utils import timezone
+from PIL import Image
 
 from accounts.models import User, CaptainProfile, CaptainDocument
 from accounts.services.reviews import (
@@ -20,6 +18,7 @@ from accounts.services.reviews import (
     reject_document,
     approve_vehicle,
     reject_vehicle,
+    set_captain_online_status,
 )
 from vehicles.models import Vehicle
 
@@ -200,7 +199,56 @@ class ReviewServiceTests(TestCase):
         self.assertEqual(document.reviewed_by, self.reviewer)
         self.assertIsNotNone(document.reviewed_at)
 
+    def test_pending_captain_cannot_go_online(self):
+        with self.assertRaises(ValidationError):
+            set_captain_online_status(self.captain, True)
 
+        self.captain.refresh_from_db()
+        self.assertEqual(
+            self.captain.operational_status,
+            CaptainProfile.OperationalStatus.OFFLINE,
+        )
+
+    def test_approved_captain_without_documents_cannot_go_online(self):
+        self.captain.approval_status = (
+            CaptainProfile.ApprovalStatus.APPROVED
+        )
+        self.captain.save(update_fields=["approval_status"])
+
+        with self.assertRaises(ValidationError):
+            set_captain_online_status(self.captain, True)
+
+    def test_captain_without_approved_vehicle_cannot_go_online(self):
+        self.create_required_documents()
+        self.captain.approval_status = (
+            CaptainProfile.ApprovalStatus.APPROVED
+        )
+        self.captain.save(update_fields=["approval_status"])
+
+        with self.assertRaises(ValidationError):
+            set_captain_online_status(self.captain, True)
+
+    def test_eligible_captain_can_go_online(self):
+        self.create_required_documents()
+        self.captain.approval_status = (
+            CaptainProfile.ApprovalStatus.APPROVED
+        )
+        self.captain.save(update_fields=["approval_status"])
+
+        vehicle = self.create_vehicle()
+        vehicle.approval_status = Vehicle.ApprovalStatus.APPROVED
+        vehicle.save(update_fields=["approval_status"])
+
+        set_captain_online_status(self.captain, True)
+
+        self.captain.refresh_from_db()
+        self.assertEqual(
+            self.captain.operational_status,
+            CaptainProfile.OperationalStatus.ONLINE,
+        )
+
+
+@override_settings(MEDIA_ROOT=TemporaryDirectory().name)
 class CaptainDocumentAdminTests(TestCase):
     def setUp(self):
         self.admin_user = User.objects.create_superuser(
@@ -329,4 +377,156 @@ class CaptainDocumentAdminTests(TestCase):
         self.assertEqual(
             b"".join(response.streaming_content),
             b"SNIPER GO test document",
+        )
+
+
+class CaptainDocumentUploadTests(TestCase):
+    def setUp(self):
+        self.temp_dir = TemporaryDirectory()
+        self.addCleanup(self.temp_dir.cleanup)
+
+        self.document_field = CaptainDocument._meta.get_field("file")
+        self.original_storage = self.document_field.storage
+
+        self.document_field.storage = FileSystemStorage(
+            location=self.temp_dir.name,
+        )
+        self.addCleanup(
+            setattr,
+            self.document_field,
+            "storage",
+            self.original_storage,
+        )
+
+        self.captain_user = User.objects.create_user(
+            username="upload_captain",
+            password="TestPassword-123!",
+            role=User.Role.CAPTAIN,
+        )
+        self.captain = CaptainProfile.objects.create(
+            user=self.captain_user,
+        )
+
+        self.other_user = User.objects.create_user(
+            username="other_captain",
+            password="TestPassword-123!",
+            role=User.Role.CAPTAIN,
+        )
+        self.other_captain = CaptainProfile.objects.create(
+            user=self.other_user,
+        )
+
+        self.url = reverse("accounts:captain_documents")
+        self.client.force_login(self.captain_user)
+
+    def make_upload(self, name="identity.jpg", content=None):
+        if content is None:
+            image = Image.new("RGB", (20, 20), color="white")
+            buffer = BytesIO()
+            image.save(buffer, format="JPEG")
+            content = buffer.getvalue()
+
+        return SimpleUploadedFile(
+            name,
+            content,
+            content_type="image/jpeg",
+        )
+
+    def test_captain_can_upload_document(self):
+        response = self.client.post(
+            self.url,
+            {
+                "document_type": CaptainDocument.DocumentType.NATIONAL_ID,
+                "file": self.make_upload(),
+                "expires_at": "",
+            },
+        )
+
+        self.assertRedirects(response, self.url)
+
+        document = CaptainDocument.objects.get(captain=self.captain)
+
+        self.assertEqual(
+            document.review_status,
+            CaptainDocument.ReviewStatus.PENDING,
+        )
+        self.assertEqual(
+            document.document_type,
+            CaptainDocument.DocumentType.NATIONAL_ID,
+        )
+        self.assertTrue(document.file.name)
+
+    def test_invalid_file_extension_is_rejected(self):
+        response = self.client.post(
+            self.url,
+            {
+                "document_type": CaptainDocument.DocumentType.NATIONAL_ID,
+                "file": self.make_upload("malware.exe"),
+                "expires_at": "",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(
+            CaptainDocument.objects.filter(captain=self.captain).exists()
+        )
+        self.assertContains(
+            response,
+            "Only PDF, JPG, JPEG, and PNG files are allowed.",
+            status_code=200,
+        )
+
+    def test_file_larger_than_10_mb_is_rejected(self):
+        large_content = b"x" * (10 * 1024 * 1024 + 1)
+
+        response = self.client.post(
+            self.url,
+            {
+                "document_type": CaptainDocument.DocumentType.NATIONAL_ID,
+                "file": self.make_upload("large.jpg", large_content),
+                "expires_at": "",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(
+            CaptainDocument.objects.filter(captain=self.captain).exists()
+        )
+
+    def test_customer_cannot_upload_captain_documents(self):
+        customer = User.objects.create_user(
+            username="upload_customer",
+            password="TestPassword-123!",
+            role=User.Role.CUSTOMER,
+        )
+        self.client.force_login(customer)
+
+        response = self.client.post(
+            self.url,
+            {
+                "document_type": CaptainDocument.DocumentType.NATIONAL_ID,
+                "file": self.make_upload(),
+                "expires_at": "",
+            },
+        )
+
+        self.assertRedirects(
+            response,
+            reverse("accounts:dashboard"),
+        )
+        self.assertFalse(CaptainDocument.objects.exists())
+
+    def test_captain_only_sees_own_documents(self):
+        CaptainDocument.objects.create(
+            captain=self.other_captain,
+            document_type=CaptainDocument.DocumentType.NATIONAL_ID,
+            file="other-captain/identity.jpg",
+        )
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            list(response.context["documents"]),
+            [],
         )

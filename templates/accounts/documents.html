@@ -1,0 +1,145 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Captain Documents | SNIPER GO</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            padding: 24px;
+            font-family: Arial, sans-serif;
+            background: #f3f5f9;
+            color: #172033;
+        }
+        .container { max-width: 850px; margin: auto; }
+        .card {
+            background: white;
+            padding: 24px;
+            margin-bottom: 20px;
+            border-radius: 14px;
+            box-shadow: 0 4px 18px rgba(0,0,0,.05);
+        }
+        h1, h2 { margin-top: 0; }
+        .brand { color: #e0a000; font-weight: bold; }
+        label {
+            display: block;
+            margin: 16px 0 7px;
+            font-weight: bold;
+        }
+        input, select {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #d4d9e2;
+            border-radius: 8px;
+        }
+        button, .link {
+            display: inline-block;
+            margin-top: 18px;
+            padding: 12px 18px;
+            border: 0;
+            border-radius: 8px;
+            background: #172033;
+            color: white;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        .messages { padding: 0; list-style: none; }
+        .messages li {
+            background: #fff4d6;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 8px;
+        }
+        .document {
+            border-top: 1px solid #e5e7eb;
+            padding: 16px 0;
+        }
+        .status { font-weight: bold; }
+        .errorlist { color: #b42318; }
+        .help { color: #687386; font-size: 14px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <p class="brand">SNIPER GO</p>
+    <h1>Captain Documents</h1>
+    <p>Upload your documents for account verification.</p>
+
+    {% if messages %}
+        <ul class="messages">
+            {% for message in messages %}
+                <li>{{ message }}</li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+
+    <section class="card">
+        <h2>Upload a document</h2>
+
+        <form method="post" enctype="multipart/form-data">
+            {% csrf_token %}
+
+            {{ form.non_field_errors }}
+
+            <label for="{{ form.document_type.id_for_label }}">
+                Document type
+            </label>
+            {{ form.document_type }}
+            {{ form.document_type.errors }}
+
+            <label for="{{ form.file.id_for_label }}">
+                Choose file
+            </label>
+            {{ form.file }}
+            {{ form.file.errors }}
+            <p class="help">PDF, JPG, JPEG or PNG. Maximum size: 10 MB.</p>
+
+            <label for="{{ form.expires_at.id_for_label }}">
+                Expiration date (optional)
+            </label>
+            {{ form.expires_at }}
+            {{ form.expires_at.errors }}
+
+            <button type="submit">Upload Document</button>
+        </form>
+    </section>
+
+    <section class="card">
+        <h2>My Documents</h2>
+
+        {% for document in documents %}
+            <div class="document">
+                <strong>{{ document.get_document_type_display }}</strong>
+                <p>
+                    Status:
+                    <span class="status">
+                        {{ document.get_review_status_display }}
+                    </span>
+                </p>
+
+                {% if document.expires_at %}
+                    <p>Expires: {{ document.expires_at|date:"d/m/Y" }}</p>
+                {% endif %}
+
+                {% if document.rejection_reason %}
+                    <p>Rejection reason: {{ document.rejection_reason }}</p>
+                {% endif %}
+
+                <p class="help">
+                    Submitted: {{ document.created_at|date:"d/m/Y H:i" }}
+                </p>
+            </div>
+        {% empty %}
+            <p>You have not uploaded any documents yet.</p>
+        {% endfor %}
+    </section>
+
+    <a class="link" href="{% url 'accounts:dashboard' %}">
+        Back to Dashboard
+    </a>
+</div>
+</body>
+</html>

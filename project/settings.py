@@ -171,3 +171,7 @@ if os.name == "nt":
     GEOS_LIBRARY_PATH = (
         r"C:\Users\hp\AppData\Local\Programs\OSGeo4W\bin\geos_c.dll"
     )
+    
+LOGIN_URL = "/accounts/login/"
+LOGIN_REDIRECT_URL = "/accounts/dashboard/"
+LOGOUT_REDIRECT_URL = "/accounts/login/"

@@ -1,0 +1,21 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SNIPER GO - Register {{ account_type }}</title>
+</head>
+<body>
+    <h1>SNIPER GO</h1>
+    <h2>Register as {{ account_type }}</h2>
+
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit">Create account</button>
+    </form>
+
+    <p><a href="{% url 'accounts:login' %}">Already have an account? Log in</a></p>
+</body>
+</html>

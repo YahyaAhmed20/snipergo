@@ -1,0 +1,35 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SNIPER GO - Login</title>
+</head>
+<body>
+    <h1>SNIPER GO</h1>
+    <h2>Login</h2>
+
+    {% if form.errors %}
+        <p>Invalid username or password.</p>
+    {% endif %}
+
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit">Log in</button>
+    </form>
+
+    <p>
+        <a href="{% url 'accounts:register_customer' %}">
+            Register as Customer
+        </a>
+    </p>
+
+    <p>
+        <a href="{% url 'accounts:register_captain' %}">
+            Register as Captain
+        </a>
+    </p>
+</body>
+</html>

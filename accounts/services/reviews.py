@@ -197,3 +197,40 @@ def reject_document(document, reviewer, reason):
             "reviewed_by",
         ]
     )
+
+
+
+@transaction.atomic
+def set_captain_online_status(captain, is_online):
+    captain = CaptainProfile.objects.select_for_update().get(
+        pk=captain.pk
+    )
+
+    if is_online:
+        if captain.approval_status != CaptainProfile.ApprovalStatus.APPROVED:
+            raise ValidationError(
+                "Captain must be approved before going online."
+            )
+
+        validate_captain_documents(captain)
+
+        approved_vehicle_exists = Vehicle.objects.filter(
+            captain=captain,
+            approval_status=Vehicle.ApprovalStatus.APPROVED,
+        ).exists()
+
+        if not approved_vehicle_exists:
+            raise ValidationError(
+                "Captain must have an approved vehicle before going online."
+            )
+
+        captain.operational_status = CaptainProfile.OperationalStatus.ONLINE
+
+    else:
+        captain.operational_status = CaptainProfile.OperationalStatus.OFFLINE
+
+    captain.save(
+        update_fields=["operational_status", "updated_at"]
+    )
+
+    return captain

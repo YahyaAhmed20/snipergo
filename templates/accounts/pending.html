@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SNIPER GO - Captain</title>
+</head>
+<body>
+    <h1>SNIPER GO</h1>
+    <h2>Captain Dashboard</h2>
+
+    {% if messages %}
+        {% for message in messages %}
+            <p>{{ message }}</p>
+        {% endfor %}
+    {% endif %}
+
+    {% if captain %}
+        <p>Approval status: {{ captain.get_approval_status_display }}</p>
+        <p>Operational status: {{ captain.get_operational_status_display }}</p>
+
+        {% if captain.approval_status == "APPROVED" %}
+            <form method="post" action="{% url 'accounts:set_operational_status' %}">
+                {% csrf_token %}
+
+                {% if captain.operational_status == "ONLINE" %}
+                    <input type="hidden" name="status" value="OFFLINE">
+                    <button type="submit">Go Offline</button>
+                {% else %}
+                    <input type="hidden" name="status" value="ONLINE">
+                    <button type="submit">Go Online</button>
+                {% endif %}
+            </form>
+        {% else %}
+            <p>Your account must be approved before you can operate.</p>
+        {% endif %}
+
+        <p>
+            <a href="{% url 'accounts:captain_documents' %}">
+                Manage My Documents
+            </a>
+        </p>
+    {% else %}
+        <p>{{ message }}</p>
+    {% endif %}
+
+    <form method="post" action="{% url 'accounts:logout' %}">
+        {% csrf_token %}
+        <button type="submit">Log out</button>
+    </form>
+</body>
+</html>
