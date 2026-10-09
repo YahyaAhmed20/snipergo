@@ -68,12 +68,15 @@ class CaptainProfileAdmin(admin.ModelAdmin):
     )
     list_filter = ("approval_status", "operational_status")
     search_fields = ("user__username", "phone_number")
+
     readonly_fields = (
         "approval_status",
+        "operational_status",
         "rejection_reason",
         "reviewed_at",
         "reviewed_by",
     )
+
     actions = ("approve_captains",)
 
     @admin.action(description="Approve selected captains")
