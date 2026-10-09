@@ -37,7 +37,6 @@ CSRF_TRUSTED_ORIGINS = [
  
 
 ]
-snipergo-production.up.railway.app
 
 # Application definition
 
