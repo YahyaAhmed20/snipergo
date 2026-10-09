@@ -152,10 +152,12 @@ AUTH_USER_MODEL = "accounts.User"
 
 import os
 
-GDAL_LIBRARY_PATH = (
-    r"C:\Users\hp\AppData\Local\Programs\OSGeo4W\bin\gdal313.dll"
-)
+import os
 
-GEOS_LIBRARY_PATH = (
-    r"C:\Users\hp\AppData\Local\Programs\OSGeo4W\bin\geos_c.dll"
-)
+if os.name == "nt":
+    GDAL_LIBRARY_PATH = (
+        r"C:\Users\hp\AppData\Local\Programs\OSGeo4W\bin\gdal313.dll"
+    )
+    GEOS_LIBRARY_PATH = (
+        r"C:\Users\hp\AppData\Local\Programs\OSGeo4W\bin\geos_c.dll"
+    )
