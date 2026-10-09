@@ -1,28 +1,61 @@
-"""
-URL configuration for project project.
 
-The `urlpatterns` list routes URLs to views. For more information please see:
-    https://docs.djangoproject.com/en/5.2/topics/http/urls/
-Examples:
-Function views
-    1. Add an import:  from my_app import views
-    2. Add a URL to urlpatterns:  path('', views.home, name='home')
-Class-based views
-    1. Add an import:  from other_app.views import Home
-    2. Add a URL to urlpatterns:  path('', Home.as_view(), name='home')
-Including another URLconf
-    1. Import the include() function: from django.urls import include, path
-    2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
-"""
 from django.contrib import admin
 from django.urls import path
 from django.conf import settings
 from django.conf.urls.static import static
+from django.http import HttpResponse
+
+
+def home(request):
+    return HttpResponse(
+        """
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>SNIPER GO</title>
+            <style>
+                body {
+                    margin: 0;
+                    min-height: 100vh;
+                    display: grid;
+                    place-items: center;
+                    background: #101820;
+                    color: white;
+                    font-family: Arial, sans-serif;
+                    text-align: center;
+                }
+                h1 { font-size: 42px; letter-spacing: 4px; }
+                p { color: #aab4bf; }
+                a { color: #7ee787; text-decoration: none; }
+            </style>
+        </head>
+        <body>
+            <main>
+                <h1>SNIPER GO</h1>
+                <p>Smart Mobility. Moving Forward.</p>
+                <p>Platform is running successfully.</p>
+                <a href="/admin/">Administration</a>
+            </main>
+        </body>
+        </html>
+        """,
+        content_type="text/html; charset=utf-8",
+    )
+
+
 urlpatterns = [
-    path('admin/', admin.site.urls),
+    path("", home, name="home"),
+    path("admin/", admin.site.urls),
 ]
 
-
 if settings.DEBUG:
-    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    urlpatterns += static(
+        settings.STATIC_URL,
+        document_root=settings.STATIC_ROOT,
+    )
+    urlpatterns += static(
+        settings.MEDIA_URL,
+        document_root=settings.MEDIA_ROOT,
+    )
