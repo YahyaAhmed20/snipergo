@@ -1,0 +1,36 @@
+
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+<h1>Review captain document</h1>
+
+<p><strong>Captain:</strong> {{ document.captain.user.username }}</p>
+<p><strong>Document type:</strong> {{ document.get_document_type_display }}</p>
+<p><strong>Current status:</strong> {{ document.get_review_status_display }}</p>
+<p><strong>Expiry date:</strong> {{ document.expires_at|default:"Not specified" }}</p>
+
+{% if document.file %}
+<p>
+   <a href="{% url 'admin:accounts_captaindocument_file' document.pk %}">
+    Download document securely
+</a>
+</p>
+{% endif %}
+
+<form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+
+    <button type="submit" name="action" value="approve">
+        Approve document
+    </button>
+
+    <button type="submit" name="action" value="reject">
+        Reject document
+    </button>
+
+    <a href="{% url 'admin:accounts_captaindocument_changelist' %}">
+        Cancel
+    </a>
+</form>
+{% endblock %}
