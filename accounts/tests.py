@@ -247,6 +247,101 @@ class ReviewServiceTests(TestCase):
             CaptainProfile.OperationalStatus.ONLINE,
         )
 
+    def test_pending_required_document_cannot_go_online(self):
+        self.create_required_documents()
+        document = self.captain.documents.get(
+            document_type=CaptainDocument.DocumentType.DRIVING_LICENSE
+        )
+        document.review_status = CaptainDocument.ReviewStatus.PENDING
+        document.save(update_fields=["review_status"])
+
+        self.captain.approval_status = CaptainProfile.ApprovalStatus.APPROVED
+        self.captain.save(update_fields=["approval_status"])
+
+        vehicle = self.create_vehicle()
+        vehicle.approval_status = Vehicle.ApprovalStatus.APPROVED
+        vehicle.save(update_fields=["approval_status"])
+
+        with self.assertRaises(ValidationError):
+            set_captain_online_status(self.captain, True)
+
+        self.captain.refresh_from_db()
+        self.assertEqual(
+            self.captain.operational_status,
+            CaptainProfile.OperationalStatus.OFFLINE,
+        )
+
+    def test_rejected_required_document_cannot_go_online(self):
+        self.create_required_documents()
+        document = self.captain.documents.get(
+            document_type=CaptainDocument.DocumentType.DRIVING_LICENSE
+        )
+        document.review_status = CaptainDocument.ReviewStatus.REJECTED
+        document.save(update_fields=["review_status"])
+
+        self.captain.approval_status = CaptainProfile.ApprovalStatus.APPROVED
+        self.captain.save(update_fields=["approval_status"])
+
+        vehicle = self.create_vehicle()
+        vehicle.approval_status = Vehicle.ApprovalStatus.APPROVED
+        vehicle.save(update_fields=["approval_status"])
+
+        with self.assertRaises(ValidationError):
+            set_captain_online_status(self.captain, True)
+
+    def test_expired_required_document_cannot_go_online(self):
+        self.create_required_documents()
+        document = self.captain.documents.get(
+            document_type=CaptainDocument.DocumentType.DRIVING_LICENSE
+        )
+        document.expires_at = timezone.localdate() - timedelta(days=1)
+        document.save(update_fields=["expires_at"])
+
+        self.captain.approval_status = CaptainProfile.ApprovalStatus.APPROVED
+        self.captain.save(update_fields=["approval_status"])
+
+        vehicle = self.create_vehicle()
+        vehicle.approval_status = Vehicle.ApprovalStatus.APPROVED
+        vehicle.save(update_fields=["approval_status"])
+
+        with self.assertRaises(ValidationError):
+            set_captain_online_status(self.captain, True)
+
+    def test_eligible_captain_can_go_offline(self):
+        self.create_required_documents()
+        self.captain.approval_status = CaptainProfile.ApprovalStatus.APPROVED
+        self.captain.save(update_fields=["approval_status"])
+
+        vehicle = self.create_vehicle()
+        vehicle.approval_status = Vehicle.ApprovalStatus.APPROVED
+        vehicle.save(update_fields=["approval_status"])
+
+        set_captain_online_status(self.captain, True)
+        set_captain_online_status(self.captain, False)
+
+        self.captain.refresh_from_db()
+        self.assertEqual(
+            self.captain.operational_status,
+            CaptainProfile.OperationalStatus.OFFLINE,
+        )
+
+    def test_rejecting_captain_resets_pending_vehicle_review(self):
+        vehicle = self.create_vehicle()
+        vehicle.approval_status = Vehicle.ApprovalStatus.APPROVED
+        vehicle.save(update_fields=["approval_status"])
+
+        reject_captain(
+            self.captain,
+            self.reviewer,
+            "Required review failed",
+        )
+
+        vehicle.refresh_from_db()
+        self.assertEqual(
+            vehicle.approval_status,
+            Vehicle.ApprovalStatus.PENDING,
+        )
+
 
 @override_settings(MEDIA_ROOT=TemporaryDirectory().name)
 class CaptainDocumentAdminTests(TestCase):
