@@ -1,16 +1,23 @@
 from datetime import timedelta
+from decimal import Decimal
 from io import BytesIO
 from tempfile import TemporaryDirectory
 
 from django.core.exceptions import ValidationError
 from django.core.files.storage import FileSystemStorage
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import IntegrityError, transaction
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from PIL import Image
 
-from accounts.models import User, CaptainProfile, CaptainDocument
+from accounts.models import (
+    CaptainDocument,
+    CaptainProfile,
+    CaptainWallet,
+    User,
+)
 from accounts.services.reviews import (
     approve_captain,
     reject_captain,
@@ -40,6 +47,11 @@ class ReviewServiceTests(TestCase):
 
         self.captain = CaptainProfile.objects.create(
             user=self.captain_user,
+        )
+
+        CaptainWallet.objects.create(
+            captain=self.captain,
+            balance=Decimal("100.00"),
         )
 
     def create_document(
@@ -625,3 +637,65 @@ class CaptainDocumentUploadTests(TestCase):
             list(response.context["documents"]),
             [],
         )
+
+
+class CaptainWalletTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="wallet_test_captain",
+            password="TestPassword123!",
+            role=User.Role.CAPTAIN,
+        )
+        self.captain = CaptainProfile.objects.create(
+            user=self.user,
+        )
+        self.wallet = CaptainWallet.objects.create(
+            captain=self.captain,
+            balance=Decimal("100.00"),
+            reserved_balance=Decimal("20.00"),
+        )
+
+    def test_available_balance(self):
+        self.assertEqual(
+            self.wallet.available_balance,
+            Decimal("80.00"),
+        )
+
+    def test_reserved_balance_cannot_be_negative(self):
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                CaptainWallet.objects.filter(
+                    pk=self.wallet.pk
+                ).update(
+                    reserved_balance=Decimal("-1.00")
+                )
+
+    def test_reserved_balance_cannot_exceed_balance(self):
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                CaptainWallet.objects.filter(
+                    pk=self.wallet.pk
+                ).update(
+                    reserved_balance=Decimal("101.00")
+                )
+
+    def test_reserved_balance_can_equal_balance(self):
+        self.wallet.reserved_balance = Decimal("100.00")
+        self.wallet.save(
+            update_fields=["reserved_balance", "updated_at"]
+        )
+        self.wallet.refresh_from_db()
+
+        self.assertEqual(
+            self.wallet.available_balance,
+            Decimal("0.00"),
+        )
+
+    def test_balance_cannot_be_negative(self):
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                CaptainWallet.objects.filter(
+                    pk=self.wallet.pk
+                ).update(
+                    balance=Decimal("-1.00")
+                )

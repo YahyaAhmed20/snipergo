@@ -95,6 +95,51 @@ class CaptainProfile(models.Model):
         return f"Captain profile: {self.user.username}"
 
 
+class CaptainWallet(models.Model):
+    captain = models.OneToOneField(
+        CaptainProfile,
+        on_delete=models.PROTECT,
+        related_name="wallet",
+    )
+    balance = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0,
+    )
+    reserved_balance = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Captain Wallet"
+        verbose_name_plural = "Captain Wallets"
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(balance__gte=0),
+                name="captain_wallet_balance_nonnegative",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(reserved_balance__gte=0),
+                name="captain_wallet_reserved_nonnegative",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(reserved_balance__lte=models.F("balance")),
+                name="captain_wallet_reserved_lte_balance",
+            ),
+        ]
+
+    @property
+    def available_balance(self):
+        return self.balance - self.reserved_balance
+
+    def __str__(self):
+        return f"Wallet: {self.captain.user.username} - {self.balance} EGP"
+
+
 class CaptainDocument(models.Model):
     class DocumentType(models.TextChoices):
         NATIONAL_ID = "NATIONAL_ID", "National ID"

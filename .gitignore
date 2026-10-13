@@ -2,3 +2,6 @@ __pycache__/
 *.py[cod]
 
 private_media/
+
+
+test_db.sqlite3

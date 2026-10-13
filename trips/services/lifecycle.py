@@ -1,10 +1,17 @@
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
-
+from trips.services.wallet import (
+    deduct_trip_commission,
+    release_trip_commission_reservation,
+    reserve_trip_commission,
+)
 from accounts.models import CaptainProfile
+from accounts.services.reviews import validate_captain_documents
 from trips.models import Trip
+from trips.services.finance import create_trip_financial_record
 from vehicles.models import Vehicle
+from decimal import Decimal
 
 
 @transaction.atomic
@@ -22,6 +29,13 @@ def accept_trip(*, trip_id, captain):
 
     if captain.operational_status != CaptainProfile.OperationalStatus.ONLINE:
         raise ValidationError("Captain must be online.")
+
+    try:
+        validate_captain_documents(captain)
+    except ValidationError:
+        raise ValidationError(
+            "Captain's required documents are not valid."
+        )
 
     vehicle = Vehicle.objects.filter(
         captain=captain,
@@ -45,10 +59,8 @@ def accept_trip(*, trip_id, captain):
             "updated_at",
         ]
     )
-
+    reserve_trip_commission(trip_id=trip.pk)
     return trip
-
-
 
 
 @transaction.atomic
@@ -131,8 +143,14 @@ def complete_trip(*, trip_id, captain, final_fare):
             "updated_at",
         ]
     )
-    return trip
 
+    record = create_trip_financial_record(trip_id=trip.pk)
+
+    deduct_trip_commission(
+        trip_financial_record_id=record.pk,
+    )
+
+    return trip
 
 
 @transaction.atomic
@@ -185,4 +203,8 @@ def cancel_trip(*, trip_id, cancelled_by, reason):
             "updated_at",
         ]
     )
+
+    if trip.captain_id is not None:
+        release_trip_commission_reservation(trip_id=trip.pk)
+
     return trip
