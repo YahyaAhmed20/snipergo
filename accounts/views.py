@@ -1,4 +1,7 @@
 from datetime import date
+from .forms import CashWalletTopUpForm
+from .models import WalletTopUpRequest
+from django.utils.crypto import get_random_string
 
 from django.contrib import messages
 from django.contrib.auth import views as auth_views
@@ -226,4 +229,48 @@ def captain_documents(request):
             "documents": documents,
             "captain": captain,
         },
+    )
+
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def request_cash_topup(request):
+    if request.user.role != User.Role.CAPTAIN:
+        messages.error(request, "Only captains can request wallet deposits.")
+        return redirect("accounts:dashboard")
+
+    try:
+        captain = request.user.captain_profile
+    except CaptainProfile.DoesNotExist:
+        messages.error(request, "Captain profile not found.")
+        return redirect("accounts:dashboard")
+
+    if request.method == "POST":
+        form = CashWalletTopUpForm(request.POST)
+
+        if form.is_valid():
+            reference = f"CASH-{get_random_string(24).upper()}"
+
+            WalletTopUpRequest.objects.create(
+                captain=captain,
+                amount=form.cleaned_data["amount"],
+                method=WalletTopUpRequest.Method.CASH,
+                status=WalletTopUpRequest.Status.PENDING,
+                reference=reference,
+            )
+
+            messages.success(
+                request,
+                f"Deposit request submitted. Reference: {reference}. "
+                "Your wallet will be credited after admin approval.",
+            )
+            return redirect("accounts:dashboard")
+    else:
+        form = CashWalletTopUpForm()
+
+    return render(
+        request,
+        "accounts/cash_topup_request.html",
+        {"form": form},
     )

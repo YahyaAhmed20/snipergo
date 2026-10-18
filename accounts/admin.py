@@ -1,7 +1,7 @@
 from django import forms
 from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.urls import reverse
 from django.utils.html import format_html
 
@@ -11,11 +11,16 @@ from accounts.services.reviews import (
     approve_document,
     reject_document,
 )
+from accounts.services.wallet_topups import (
+    approve_cash_topup,
+    reject_cash_topup,
+)
 from .models import (
     User,
     CustomerProfile,
     CaptainProfile,
     CaptainDocument,
+    WalletTopUpRequest,
 )
 
 
@@ -44,6 +49,16 @@ class CaptainRejectionForm(forms.Form):
 
 
 class DocumentRejectionForm(forms.Form):
+    reason = forms.CharField(
+        label="Rejection reason",
+        widget=forms.Textarea,
+        required=True,
+        min_length=5,
+        max_length=2000,
+    )
+
+
+class WalletTopUpRejectionForm(forms.Form):
     reason = forms.CharField(
         label="Rejection reason",
         widget=forms.Textarea,
@@ -342,3 +357,171 @@ class CaptainDocumentAdmin(admin.ModelAdmin):
         response["X-Content-Type-Options"] = "nosniff"
 
         return response
+
+
+@admin.register(WalletTopUpRequest)
+class WalletTopUpRequestAdmin(admin.ModelAdmin):
+    list_display = (
+        "captain",
+        "amount",
+        "method",
+        "status",
+        "reference",
+        "created_at",
+        "rejection_action",
+    )
+    list_filter = ("method", "status", "created_at")
+    search_fields = (
+        "captain__user__username",
+        "reference",
+        "payment_reference",
+    )
+    readonly_fields = (
+        "captain",
+        "amount",
+        "method",
+        "status",
+        "reference",
+        "payment_reference",
+        "reviewed_by",
+        "reviewed_at",
+        "rejection_reason",
+        "created_at",
+        "updated_at",
+    )
+    actions = ("approve_cash_deposits",)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    @admin.display(description="Review action")
+    def rejection_action(self, obj):
+        if obj.method != WalletTopUpRequest.Method.CASH:
+            return "—"
+
+        if obj.status != WalletTopUpRequest.Status.PENDING:
+            return "Processed"
+
+        url = reverse(
+            "admin:accounts_wallettopuprequest_reject",
+            args=[obj.pk],
+        )
+        return format_html('<a href="{}">Reject deposit</a>', url)
+
+    @admin.action(description="Approve selected cash deposits")
+    def approve_cash_deposits(self, request, queryset):
+        approved = 0
+        failed = 0
+
+        for topup in queryset:
+            try:
+                approve_cash_topup(
+                    request_id=topup.pk,
+                    admin_user=request.user,
+                )
+                approved += 1
+            except (ValidationError, PermissionDenied) as exc:
+                failed += 1
+                self.message_user(
+                    request,
+                    f"Request #{topup.pk}: {exc}",
+                    messages.ERROR,
+                )
+
+        if approved:
+            self.message_user(
+                request,
+                f"{approved} cash deposit(s) approved.",
+                messages.SUCCESS,
+            )
+
+        if failed:
+            self.message_user(
+                request,
+                f"{failed} request(s) could not be approved.",
+                messages.WARNING,
+            )
+
+    def get_urls(self):
+        from django.urls import path
+
+        custom_urls = [
+            path(
+                "<path:object_id>/reject/",
+                self.admin_site.admin_view(self.reject_view),
+                name="accounts_wallettopuprequest_reject",
+            ),
+        ]
+        return custom_urls + super().get_urls()
+
+    def reject_view(self, request, object_id):
+        from django.core.exceptions import PermissionDenied
+        from django.shortcuts import get_object_or_404, redirect, render
+
+        topup = get_object_or_404(
+            WalletTopUpRequest.objects.select_related(
+                "captain__user",
+                "captain__wallet",
+            ),
+            pk=object_id,
+        )
+
+        if not self.has_change_permission(request, topup):
+            raise PermissionDenied
+
+        if topup.status != WalletTopUpRequest.Status.PENDING:
+            self.message_user(
+                request,
+                "This request has already been reviewed.",
+                messages.WARNING,
+            )
+            return redirect(
+                "admin:accounts_wallettopuprequest_changelist"
+            )
+
+        if topup.method != WalletTopUpRequest.Method.CASH:
+            self.message_user(
+                request,
+                "Only cash top-ups can be rejected here.",
+                messages.WARNING,
+            )
+            return redirect(
+                "admin:accounts_wallettopuprequest_changelist"
+            )
+
+        form = WalletTopUpRejectionForm()
+
+        if request.method == "POST":
+            form = WalletTopUpRejectionForm(request.POST)
+
+            if form.is_valid():
+                try:
+                    reject_cash_topup(
+                        request_id=topup.pk,
+                        admin_user=request.user,
+                        reason=form.cleaned_data["reason"],
+                    )
+                    self.message_user(
+                        request,
+                        "Cash deposit rejected successfully.",
+                        messages.WARNING,
+                    )
+                    return redirect(
+                        "admin:accounts_wallettopuprequest_changelist"
+                    )
+                except ValidationError as exc:
+                    form.add_error(None, "; ".join(exc.messages))
+
+        return render(
+            request,
+            "admin/accounts/wallettopuprequest/reject.html",
+            {
+                "form": form,
+                "topup": topup,
+                "opts": self.model._meta,
+                "title": "Reject cash deposit",
+            },
+        )

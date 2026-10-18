@@ -1,16 +1,23 @@
 from datetime import timedelta
+from decimal import Decimal
 from io import BytesIO
 from tempfile import TemporaryDirectory
 
 from django.core.exceptions import ValidationError
 from django.core.files.storage import FileSystemStorage
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import IntegrityError, transaction
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from PIL import Image
 
-from accounts.models import User, CaptainProfile, CaptainDocument
+from accounts.models import (
+    CaptainDocument,
+    CaptainProfile,
+    CaptainWallet,
+    User,
+)
 from accounts.services.reviews import (
     approve_captain,
     reject_captain,
@@ -40,6 +47,11 @@ class ReviewServiceTests(TestCase):
 
         self.captain = CaptainProfile.objects.create(
             user=self.captain_user,
+        )
+
+        CaptainWallet.objects.create(
+            captain=self.captain,
+            balance=Decimal("100.00"),
         )
 
     def create_document(
@@ -625,3 +637,174 @@ class CaptainDocumentUploadTests(TestCase):
             list(response.context["documents"]),
             [],
         )
+
+
+class CaptainWalletTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="wallet_test_captain",
+            password="TestPassword123!",
+            role=User.Role.CAPTAIN,
+        )
+        self.captain = CaptainProfile.objects.create(
+            user=self.user,
+        )
+        self.wallet = CaptainWallet.objects.create(
+            captain=self.captain,
+            balance=Decimal("100.00"),
+            reserved_balance=Decimal("20.00"),
+        )
+
+    def test_available_balance(self):
+        self.assertEqual(
+            self.wallet.available_balance,
+            Decimal("80.00"),
+        )
+
+    def test_reserved_balance_cannot_be_negative(self):
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                CaptainWallet.objects.filter(
+                    pk=self.wallet.pk
+                ).update(
+                    reserved_balance=Decimal("-1.00")
+                )
+
+    def test_reserved_balance_cannot_exceed_balance(self):
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                CaptainWallet.objects.filter(
+                    pk=self.wallet.pk
+                ).update(
+                    reserved_balance=Decimal("101.00")
+                )
+
+    def test_reserved_balance_can_equal_balance(self):
+        self.wallet.reserved_balance = Decimal("100.00")
+        self.wallet.save(
+            update_fields=["reserved_balance", "updated_at"]
+        )
+        self.wallet.refresh_from_db()
+
+        self.assertEqual(
+            self.wallet.available_balance,
+            Decimal("0.00"),
+        )
+
+    def test_balance_cannot_be_negative(self):
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                CaptainWallet.objects.filter(
+                    pk=self.wallet.pk
+                ).update(
+                    balance=Decimal("-1.00")
+                )
+
+
+
+
+class CaptainLocationUpdateAPITests(TestCase):
+    def setUp(self):
+        self.client = Client()
+
+        self.captain_user = User.objects.create_user(
+            username="location_captain",
+            password="TestPassword-123!",
+            role=User.Role.CAPTAIN,
+        )
+        self.captain = CaptainProfile.objects.create(
+            user=self.captain_user,
+        )
+
+        self.customer_user = User.objects.create_user(
+            username="location_customer",
+            password="TestPassword-123!",
+            role=User.Role.CUSTOMER,
+        )
+
+        self.url = reverse("accounts:captain_location_update")
+
+    def test_captain_can_update_location(self):
+        self.client.force_login(self.captain_user)
+
+        response = self.client.post(
+            self.url,
+            data={
+                "latitude": "29.966800",
+                "longitude": "32.549800",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        self.captain.refresh_from_db()
+        self.assertEqual(
+            self.captain.current_latitude,
+            Decimal("29.966800"),
+        )
+        self.assertEqual(
+            self.captain.current_longitude,
+            Decimal("32.549800"),
+        )
+        self.assertIsNotNone(self.captain.location_updated_at)
+        self.assertEqual(
+            response.json()["detail"],
+            "Location updated successfully.",
+        )
+
+    def test_customer_cannot_update_captain_location(self):
+        self.client.force_login(self.customer_user)
+
+        response = self.client.post(
+            self.url,
+            data={
+                "latitude": "29.966800",
+                "longitude": "32.549800",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.captain.refresh_from_db()
+        self.assertIsNone(self.captain.current_latitude)
+        self.assertIsNone(self.captain.current_longitude)
+
+    def test_invalid_coordinates_are_rejected(self):
+        self.client.force_login(self.captain_user)
+
+        response = self.client.post(
+            self.url,
+            data={
+                "latitude": "91",
+                "longitude": "32.549800",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.captain.refresh_from_db()
+        self.assertIsNone(self.captain.current_latitude)
+
+    def test_missing_coordinates_are_rejected(self):
+        self.client.force_login(self.captain_user)
+
+        response = self.client.post(
+            self.url,
+            data={"latitude": "29.966800"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_anonymous_user_cannot_update_location(self):
+        response = self.client.post(
+            self.url,
+            data={
+                "latitude": "29.966800",
+                "longitude": "32.549800",
+            },
+            content_type="application/json",
+        )
+
+        self.assertIn(response.status_code, (401, 403))

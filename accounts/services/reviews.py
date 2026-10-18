@@ -1,9 +1,12 @@
-
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 
-from accounts.models import CaptainDocument, CaptainProfile
+from accounts.models import (
+    CaptainDocument,
+    CaptainProfile,
+    CaptainWallet,
+)
 from vehicles.models import Vehicle
 
 
@@ -222,6 +225,14 @@ def set_captain_online_status(captain, is_online):
         if not approved_vehicle_exists:
             raise ValidationError(
                 "Captain must have an approved vehicle before going online."
+            )
+
+        wallet = CaptainWallet.objects.select_for_update().filter(
+            captain=captain
+        ).first()
+        if wallet is None or wallet.available_balance <= 0:
+            raise ValidationError(
+                "Captain must have an available wallet balance before going online."
             )
 
         captain.operational_status = CaptainProfile.OperationalStatus.ONLINE

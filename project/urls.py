@@ -50,7 +50,8 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("accounts/", include("accounts.urls")),
     path("api/trips/", include("trips.api_urls")),
-    
+    path("vehicles/", include("vehicles.urls")),
+
 ]
 
 if settings.DEBUG:

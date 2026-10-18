@@ -1,0 +1,49 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SNIPER GO - My Vehicles</title>
+</head>
+<body>
+    <h1>SNIPER GO</h1>
+    <h2>Register a Vehicle</h2>
+
+    {% if messages %}
+        {% for message in messages %}
+            <p>{{ message }}</p>
+        {% endfor %}
+    {% endif %}
+
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit">Register Vehicle</button>
+    </form>
+
+    <hr>
+
+    <h2>My Vehicles</h2>
+
+    {% for vehicle in vehicles %}
+        <article>
+            <h3>{{ vehicle.brand }} {{ vehicle.model_name }}</h3>
+            <p>Type: {{ vehicle.get_vehicle_type_display }}</p>
+            <p>Plate: {{ vehicle.plate_number }}</p>
+            <p>Year: {{ vehicle.manufacture_year }}</p>
+            <p>Status: {{ vehicle.get_approval_status_display }}</p>
+
+            {% if vehicle.approval_status == "REJECTED" %}
+                <p>Rejection reason: {{ vehicle.rejection_reason }}</p>
+            {% endif %}
+        </article>
+    {% empty %}
+        <p>You have not registered any vehicles yet.</p>
+    {% endfor %}
+
+    <p>
+        <a href="{% url 'accounts:dashboard' %}">Back to Dashboard</a>
+    </p>
+</body>
+</html>

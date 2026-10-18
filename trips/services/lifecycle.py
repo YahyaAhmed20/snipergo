@@ -1,10 +1,17 @@
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
-
+from trips.services.wallet import (
+    deduct_trip_commission,
+    release_trip_commission_reservation,
+    reserve_trip_commission,
+)
 from accounts.models import CaptainProfile
-from trips.models import Trip
+from accounts.services.reviews import validate_captain_documents
+from trips.models import CommissionConfig, Trip
+from trips.services.finance import create_trip_financial_record
 from vehicles.models import Vehicle
+from decimal import Decimal, InvalidOperation
 
 
 @transaction.atomic
@@ -23,6 +30,13 @@ def accept_trip(*, trip_id, captain):
     if captain.operational_status != CaptainProfile.OperationalStatus.ONLINE:
         raise ValidationError("Captain must be online.")
 
+    try:
+        validate_captain_documents(captain)
+    except ValidationError:
+        raise ValidationError(
+            "Captain's required documents are not valid."
+        )
+
     vehicle = Vehicle.objects.filter(
         captain=captain,
         approval_status=Vehicle.ApprovalStatus.APPROVED,
@@ -30,6 +44,15 @@ def accept_trip(*, trip_id, captain):
 
     if vehicle is None:
         raise ValidationError("Captain has no approved vehicle.")
+
+    commission_config = CommissionConfig.objects.filter(
+        is_active=True
+    ).order_by("id").first()
+    if commission_config is None:
+        raise ValidationError(
+            "No active commission configuration exists."
+        )
+    trip.commission_percentage = commission_config.percentage
 
     trip.captain = captain
     trip.vehicle = vehicle
@@ -42,13 +65,12 @@ def accept_trip(*, trip_id, captain):
             "vehicle",
             "status",
             "accepted_at",
+            "commission_percentage",
             "updated_at",
         ]
     )
-
+    reserve_trip_commission(trip_id=trip.pk)
     return trip
-
-
 
 
 @transaction.atomic
@@ -105,8 +127,10 @@ def start_trip(*, trip_id, captain):
     return trip
 
 
+
+
 @transaction.atomic
-def complete_trip(*, trip_id, captain, final_fare):
+def complete_trip(*, trip_id, captain, final_fare=None):
     trip = Trip.objects.select_for_update().get(pk=trip_id)
 
     if trip.captain_id != captain.pk:
@@ -117,12 +141,24 @@ def complete_trip(*, trip_id, captain, final_fare):
             "Only trips in progress can be completed."
         )
 
-    if final_fare is None or final_fare < 0:
-        raise ValidationError("Final fare must be zero or greater.")
+    if trip.agreed_fare is None:
+        raise ValidationError(
+            "The trip cannot be completed without an agreed fare."
+        )
+
+    agreed_fare = trip.agreed_fare
+
+    if (
+        not agreed_fare.is_finite()
+        or agreed_fare < 0
+        or agreed_fare >= Decimal("100000000")
+    ):
+        raise ValidationError("The agreed fare is invalid.")
 
     trip.status = Trip.Status.COMPLETED
-    trip.final_fare = final_fare
+    trip.final_fare = agreed_fare
     trip.completed_at = timezone.now()
+
     trip.save(
         update_fields=[
             "status",
@@ -131,8 +167,14 @@ def complete_trip(*, trip_id, captain, final_fare):
             "updated_at",
         ]
     )
-    return trip
 
+    record = create_trip_financial_record(trip_id=trip.pk)
+
+    deduct_trip_commission(
+        trip_financial_record_id=record.pk,
+    )
+
+    return trip
 
 
 @transaction.atomic
@@ -185,4 +227,8 @@ def cancel_trip(*, trip_id, cancelled_by, reason):
             "updated_at",
         ]
     )
+
+    if trip.captain_id is not None:
+        release_trip_commission_reservation(trip_id=trip.pk)
+
     return trip

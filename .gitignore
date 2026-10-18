@@ -2,3 +2,21 @@ __pycache__/
 *.py[cod]
 
 private_media/
+
+
+test_db.sqlite3
+
+
+# Local settings and sensitive files
+project/local_settings.py
+
+# Local uploads and backups
+media/
+local_backup_paymob_20261016_220442/
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+db.sqlite3
