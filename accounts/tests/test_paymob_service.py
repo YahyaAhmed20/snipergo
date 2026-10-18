@@ -63,6 +63,30 @@ class PaymobTopUpServiceTests(TestCase):
         self.assertIn("publicKey=test-public-key", checkout_url)
         post.assert_called_once()
 
+        request_kwargs = post.call_args.kwargs
+        self.assertEqual(
+            request_kwargs["headers"]["Authorization"],
+            "Token test-secret-key",
+        )
+        self.assertEqual(request_kwargs["timeout"], 20)
+
+        payload = request_kwargs["json"]
+        self.assertEqual(payload["amount"], 5000)
+        self.assertEqual(payload["currency"], "EGP")
+        self.assertEqual(payload["payment_methods"], [5489313])
+        self.assertEqual(
+            payload["notification_url"],
+            "https://example.test/paymob/webhook/",
+        )
+        self.assertEqual(
+            payload["redirection_url"],
+            "https://example.test/paymob/return/",
+        )
+        self.assertEqual(
+            payload["items"][0]["amount"],
+            5000,
+        )
+
     @patch("accounts.services.paymob.requests.post")
     def test_rejects_provider_response_missing_checkout_fields(self, post):
         post.return_value = Mock(
