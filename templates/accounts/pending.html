@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -81,13 +81,18 @@
 
     const button = document.getElementById("paymob-submit");
     const message = document.getElementById("paymob-message");
-    const csrfToken = form.querySelector(
+    const csrfInput = form.querySelector(
         'input[name="csrfmiddlewaretoken"]'
-    ).value;
+    );
+
+    if (!csrfInput) {
+        message.textContent = "Security token is unavailable.";
+        button.disabled = true;
+        return;
+    }
 
     form.addEventListener("submit", async function (event) {
         event.preventDefault();
-
         if (button.disabled) return;
 
         button.disabled = true;
@@ -101,44 +106,54 @@
                     credentials: "same-origin",
                     headers: {
                         "Content-Type": "application/json",
-                        "X-CSRFToken": csrfToken
+                        "X-CSRFToken": csrfInput.value
                     },
                     body: JSON.stringify({
-                        amount: document.getElementById(
-                            "topup-amount"
-                        ).value
+                        amount: document.getElementById("topup-amount").value
                     })
                 }
             );
 
-        let data;
-
-        try {
-            data = await response.json();
-        } catch {
-            message.textContent =
-                "Unexpected response from the payment service.";
-            button.disabled = false;
-            return;
-        }
+            let data;
+            try {
+                data = await response.json();
+            } catch {
+                throw new Error(
+                    "Unexpected response from the payment service."
+                );
+            }
 
             if (!response.ok) {
-                message.textContent =
-                    data.detail || "Unable to start payment.";
-                button.disabled = false;
-                return;
+                const detail = Array.isArray(data.detail)
+                    ? data.detail.join(" ")
+                    : data.detail;
+
+                throw new Error(detail || "Unable to start payment.");
             }
 
-            if (!data.checkout_url) {
-                message.textContent = "Payment URL was not returned.";
-                button.disabled = false;
-                return;
+            let checkoutUrl;
+
+            try {
+                checkoutUrl = new URL(data.checkout_url);
+            } catch {
+                throw new Error("Payment URL was not returned correctly.");
             }
 
-            window.location.assign(data.checkout_url);
+            if (
+                checkoutUrl.protocol !== "https:" ||
+                checkoutUrl.hostname !== "accept.paymob.com" ||
+                checkoutUrl.pathname !== "/unifiedcheckout/" ||
+                checkoutUrl.username ||
+                checkoutUrl.password
+            ) {
+                throw new Error("Payment URL was not returned correctly.");
+            }
+
+            window.location.assign(checkoutUrl.href);
+
         } catch (error) {
             message.textContent =
-                "Connection error. Please try again.";
+                error.message || "Connection error. Please try again.";
             button.disabled = false;
         }
     });

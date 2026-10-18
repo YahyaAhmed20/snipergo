@@ -18,5 +18,9 @@ local_backup_paymob_20261016_220442/
 .env
 .env.*
 !.env.example
-
 db.sqlite3
+
+/sara.md
+/lifecycle_review.txt
+/wallet_review.txt
+/requirements.txt.utf16.bak

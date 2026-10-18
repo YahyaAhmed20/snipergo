@@ -55,6 +55,12 @@ class PaymobTopUpServiceTests(TestCase):
         self.assertEqual(topup.payment_order_id, "order-123")
         self.assertEqual(topup.payment_reference, "intention-456")
         self.assertIn("clientSecret=client-secret-test", checkout_url)
+        self.assertTrue(
+            checkout_url.startswith(
+                "https://accept.paymob.com/unifiedcheckout/"
+            )
+        )
+        self.assertIn("publicKey=test-public-key", checkout_url)
         post.assert_called_once()
 
     @patch("accounts.services.paymob.requests.post")

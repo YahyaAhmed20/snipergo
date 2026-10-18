@@ -2,7 +2,7 @@ from datetime import timedelta
 from decimal import Decimal
 from io import BytesIO
 from tempfile import TemporaryDirectory
-
+from accounts.forms import CaptainDocumentForm
 from django.core.exceptions import ValidationError
 from django.core.files.storage import FileSystemStorage
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -637,6 +637,38 @@ class CaptainDocumentUploadTests(TestCase):
             list(response.context["documents"]),
             [],
         )
+
+
+    def test_expired_driving_license_is_rejected(self):
+        form = CaptainDocumentForm(
+            data={
+                "document_type": CaptainDocument.DocumentType.DRIVING_LICENSE,
+                "expires_at": (
+                    timezone.localdate() - timedelta(days=1)
+                ).isoformat(),
+            },
+            files={"file": self.make_upload()},
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("expires_at", form.errors)
+        self.assertIn(
+            "Expiration date cannot be in the past.",
+            form.errors["expires_at"],
+        )
+
+    def test_future_vehicle_license_expiry_is_accepted(self):
+        form = CaptainDocumentForm(
+            data={
+                "document_type": CaptainDocument.DocumentType.VEHICLE_LICENSE,
+                "expires_at": (
+                    timezone.localdate() + timedelta(days=30)
+                ).isoformat(),
+            },
+            files={"file": self.make_upload()},
+        )
+
+        self.assertTrue(form.is_valid(), form.errors)
 
 
 class CaptainWalletTests(TestCase):
