@@ -163,3 +163,22 @@ class CaptainDocumentForm(forms.ModelForm):
                 )
 
         return cleaned_data
+
+
+# ─────────────────────────────────────────────────────────────
+# Cash Wallet Top-Up Form
+# ─────────────────────────────────────────────────────────────
+class CashWalletTopUpForm(forms.Form):
+    amount = forms.DecimalField(
+        label="Amount (EGP)",
+        min_value=1,
+        max_digits=10,
+        decimal_places=2,
+        widget=forms.NumberInput(
+            attrs={
+                "min": "1.00",
+                "step": "0.01",
+                "placeholder": "Enter amount in EGP",
+            }
+        ),
+    )

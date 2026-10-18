@@ -1,15 +1,21 @@
 # ===== الاستيرادات =====
+from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 
-from django.shortcuts import get_object_or_404
 from django.core.exceptions import ValidationError
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
 
 from rest_framework import generics, permissions, status
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.models import CaptainProfile, CustomerProfile
+from accounts.models import (
+    CaptainProfile,
+    CaptainWallet,
+    CustomerProfile,
+)
 from trips.models import CaptainOffer, Trip
 from trips.serializers import (
     TripCreateSerializer,
@@ -18,6 +24,7 @@ from trips.serializers import (
     CaptainOfferCreateSerializer,
     CaptainOfferListSerializer,
 )
+from trips.services.distance import calculate_distance_km
 from trips.services.lifecycle import (
     accept_trip,
     mark_captain_arriving,
@@ -185,13 +192,60 @@ class AvailableTripsAPIView(generics.ListAPIView):
                 "Only approved online captains can view available trips."
             )
 
-        return Trip.objects.filter(
-            status=Trip.Status.REQUESTED,
-            captain__isnull=True,
-        ).select_related(
-            "customer__user",
-            "captain__user",
-        ).order_by("requested_at")
+        try:
+            wallet = CaptainWallet.objects.get(captain=captain)
+        except CaptainWallet.DoesNotExist:
+            raise PermissionDenied(
+                "A funded wallet is required to view available trips."
+            )
+
+        if wallet.available_balance <= 0:
+            raise PermissionDenied(
+                "Insufficient available wallet balance."
+            )
+
+        now = timezone.now()
+        location_max_age = timedelta(minutes=2)
+
+        if (
+            captain.current_latitude is None
+            or captain.current_longitude is None
+            or captain.location_updated_at is None
+            or captain.location_updated_at < now - location_max_age
+            or captain.location_updated_at > now + timedelta(seconds=30)
+        ):
+            raise PermissionDenied(
+                "A recent captain location is required. Update your location and try again."
+            )
+
+        trips = list(
+            Trip.objects.filter(
+                status=Trip.Status.REQUESTED,
+                captain__isnull=True,
+            ).select_related(
+                "customer__user",
+            )
+        )
+
+        def pickup_distance(trip):
+            try:
+                return calculate_distance_km(
+                    pickup_latitude=captain.current_latitude,
+                    pickup_longitude=captain.current_longitude,
+                    destination_latitude=trip.pickup_latitude,
+                    destination_longitude=trip.pickup_longitude,
+                )
+            except ValidationError:
+                return Decimal("Infinity")
+
+        return sorted(
+            trips,
+            key=lambda trip: (
+                pickup_distance(trip),
+                trip.requested_at,
+                trip.pk,
+            ),
+        )
 
 
 # ===== Captain Trip Actions =====
@@ -221,32 +275,10 @@ class CaptainTripActionAPIView(APIView):
                 trip = start_trip(trip_id=pk, captain=captain)
 
             elif action == "complete":
-                raw_final_fare = request.data.get("final_fare")
-
-                if raw_final_fare is None:
-                    return Response(
-                        {"detail": "final_fare is required."},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-
-                try:
-                    final_fare = Decimal(str(raw_final_fare))
-                except (InvalidOperation, ValueError, TypeError):
-                    return Response(
-                        {"detail": "final_fare must be a valid number."},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-
-                if not final_fare.is_finite() or final_fare < 0:
-                    return Response(
-                        {"detail": "final_fare must be a finite number greater than or equal to zero."},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-
+                # Final fare must always equal the agreed fare.
                 trip = complete_trip(
                     trip_id=pk,
                     captain=captain,
-                    final_fare=final_fare,
                 )
 
             else:

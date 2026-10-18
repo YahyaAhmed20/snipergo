@@ -22,7 +22,7 @@ from accounts.services.reviews import (
     approve_vehicle,
     set_captain_online_status,
 )
-from trips.models import CaptainOffer, Trip, TripPricingConfig
+from trips.models import CaptainOffer, FinancialTransaction, Trip, TripPricingConfig
 from trips.services.offers import (
     accept_captain_offer,
     create_captain_offer,
@@ -153,6 +153,43 @@ class AcceptTripTests(TestCase):
         self.assertEqual(accepted_trip.captain, self.captain)
         self.assertEqual(accepted_trip.vehicle, vehicle)
         self.assertIsNotNone(accepted_trip.accepted_at)
+        self.assertEqual(
+            accepted_trip.commission_percentage,
+            Decimal("15.00"),
+        )
+
+
+
+
+    def test_captain_with_insufficient_balance_cannot_accept_trip(self):
+        self.prepare_online_captain()
+
+        wallet = CaptainWallet.objects.get(captain=self.captain)
+        wallet.balance = Decimal("5.00")
+        wallet.reserved_balance = Decimal("0.00")
+        wallet.save(update_fields=["balance", "reserved_balance"])
+
+        with self.assertRaises(ValidationError):
+            accept_trip(
+                trip_id=self.trip.pk,
+                captain=self.captain,
+            )
+
+        self.trip.refresh_from_db()
+        wallet.refresh_from_db()
+
+        self.assertEqual(self.trip.status, Trip.Status.REQUESTED)
+        self.assertIsNone(self.trip.captain_id)
+        self.assertIsNone(self.trip.vehicle_id)
+
+        self.assertEqual(wallet.balance, Decimal("5.00"))
+        self.assertEqual(wallet.reserved_balance, Decimal("0.00"))
+
+        self.assertFalse(
+            FinancialTransaction.objects.filter(
+                reference=f"trip-commission-reserve:{self.trip.pk}"
+            ).exists()
+        )
 
     def test_unapproved_captain_cannot_accept_trip(self):
         with self.assertRaises(ValidationError):
@@ -236,17 +273,20 @@ class AcceptTripTests(TestCase):
         self.assertEqual(trip.status, Trip.Status.IN_PROGRESS)
         self.assertIsNotNone(trip.started_at)
 
+        trip.agreed_fare = Decimal("100.00")
+        trip.save(update_fields=["agreed_fare"])
+
         trip = complete_trip(
             trip_id=trip.pk,
             captain=self.captain,
-            final_fare=100,
         )
         self.assertEqual(trip.status, Trip.Status.COMPLETED)
-        self.assertEqual(trip.final_fare, 100)
+        self.assertEqual(trip.final_fare, Decimal("100.00"))
         self.assertIsNotNone(trip.completed_at)
 
 
-    # ===== الاختبار: rollback عند فشل التسجيل المالي =====
+    # ===== Rollback when financial record creation fails =====
+
     @patch(
         "trips.services.lifecycle.create_trip_financial_record",
         side_effect=ValidationError("Simulated financial failure"),
@@ -274,11 +314,14 @@ class AcceptTripTests(TestCase):
             captain=self.captain,
         )
 
+        trip.agreed_fare = Decimal("100.00")
+        trip.save(update_fields=["agreed_fare"])
+
         with self.assertRaises(ValidationError):
             complete_trip(
                 trip_id=trip.pk,
                 captain=self.captain,
-                final_fare=Decimal("100.00"),
+
             )
 
         trip.refresh_from_db()
@@ -292,7 +335,7 @@ class AcceptTripTests(TestCase):
         )
 
 
-        # ===== الاختبار: rollback عند فشل خصم العمولة =====
+        # ===== Rollback when commission deduction fails =====
     @patch(
         "trips.services.lifecycle.deduct_trip_commission",
         side_effect=ValidationError("Simulated commission deduction failure"),
@@ -320,7 +363,11 @@ class AcceptTripTests(TestCase):
             captain=self.captain,
         )
 
-        # 👇 الإضافة الأولى: خد snapshot للمحفظة قبل العملية
+        trip.agreed_fare = Decimal("100.00")
+        trip.save(update_fields=["agreed_fare"])
+
+        # Snapshot wallet balances before the operation
+
         wallet = CaptainWallet.objects.get(captain=self.captain)
         balance_before = wallet.balance
         reserved_before = wallet.reserved_balance
@@ -329,7 +376,7 @@ class AcceptTripTests(TestCase):
             complete_trip(
                 trip_id=trip.pk,
                 captain=self.captain,
-                final_fare=Decimal("100.00"),
+
             )
 
         trip.refresh_from_db()
@@ -338,7 +385,8 @@ class AcceptTripTests(TestCase):
         self.assertIsNone(trip.completed_at)
         self.assertIsNone(trip.final_fare)
 
-        # 👇 الإضافة الثانية: تأكد إن السجل المالي اترجع + المحفظة ما اتغيرتش
+        # Verify financial record rollback and unchanged wallet balances
+
         self.assertFalse(
             TripFinancialRecord.objects.filter(trip=trip).exists()
         )
@@ -350,6 +398,100 @@ class AcceptTripTests(TestCase):
         mocked_deduction.assert_called_once()
 
 
+
+
+
+
+    def test_completion_uses_commission_percentage_saved_at_acceptance(self):
+        from trips.models import CommissionConfig
+
+        self.prepare_online_captain()
+
+        trip = accept_trip(
+            trip_id=self.trip.pk,
+            captain=self.captain,
+        )
+
+        self.assertEqual(
+            trip.commission_percentage,
+            Decimal("15.00"),
+        )
+
+        CommissionConfig.objects.filter(is_active=True).update(
+            percentage=Decimal("20.00")
+        )
+
+        mark_captain_arriving(trip_id=trip.pk, captain=self.captain)
+        mark_captain_arrived(trip_id=trip.pk, captain=self.captain)
+        start_trip(trip_id=trip.pk, captain=self.captain)
+
+        trip.agreed_fare = Decimal("100.00")
+        trip.save(update_fields=["agreed_fare"])
+
+        complete_trip(trip_id=trip.pk, captain=self.captain)
+
+        record = TripFinancialRecord.objects.get(trip=trip)
+
+        self.assertEqual(record.commission_percentage, Decimal("15.00"))
+        self.assertEqual(record.commission_amount, Decimal("15.00"))
+        self.assertEqual(record.captain_earnings, Decimal("85.00"))
+
+
+
+
+
+    def test_insufficient_balance_rolls_back_trip_completion(self):
+        self.prepare_online_captain()
+
+        trip = accept_trip(
+            trip_id=self.trip.pk,
+            captain=self.captain,
+        )
+        trip = mark_captain_arriving(
+            trip_id=trip.pk,
+            captain=self.captain,
+        )
+        trip = mark_captain_arrived(
+            trip_id=trip.pk,
+            captain=self.captain,
+        )
+        trip = start_trip(
+            trip_id=trip.pk,
+            captain=self.captain,
+        )
+
+        trip.agreed_fare = Decimal("200.00")
+        trip.save(update_fields=["agreed_fare"])
+
+        wallet = CaptainWallet.objects.get(captain=self.captain)
+        wallet.balance = wallet.reserved_balance
+        wallet.save(update_fields=["balance", "updated_at"])
+
+        with self.assertRaises(ValidationError):
+            complete_trip(
+                trip_id=trip.pk,
+                captain=self.captain,
+            )
+
+        trip.refresh_from_db()
+        wallet.refresh_from_db()
+
+        self.assertEqual(trip.status, Trip.Status.IN_PROGRESS)
+        self.assertIsNone(trip.completed_at)
+        self.assertIsNone(trip.final_fare)
+
+        self.assertEqual(wallet.balance, Decimal("15.00"))
+        self.assertEqual(wallet.reserved_balance, Decimal("15.00"))
+
+        self.assertFalse(
+            TripFinancialRecord.objects.filter(trip=trip).exists()
+        )
+
+        self.assertFalse(
+            FinancialTransaction.objects.filter(
+                reference=f"trip-commission:{trip.pk}",
+            ).exists()
+        )
 
 
     def test_trip_cannot_be_completed_before_start(self):
@@ -364,7 +506,6 @@ class AcceptTripTests(TestCase):
             complete_trip(
                 trip_id=self.trip.pk,
                 captain=self.captain,
-                final_fare=100,
             )
 
         self.trip.refresh_from_db()
@@ -373,7 +514,6 @@ class AcceptTripTests(TestCase):
             Trip.Status.ACCEPTED,
         )
         self.assertIsNone(self.trip.final_fare)
-
 
     def test_another_captain_cannot_change_trip_status(self):
         self.prepare_online_captain()
@@ -555,10 +695,14 @@ class AcceptTripTests(TestCase):
             trip_id=self.trip.pk,
             captain=self.captain,
         )
+
+        self.trip.refresh_from_db()
+        self.trip.agreed_fare = Decimal("100.00")
+        self.trip.save(update_fields=["agreed_fare"])
+
         complete_trip(
             trip_id=self.trip.pk,
             captain=self.captain,
-            final_fare=100,
         )
 
         with self.assertRaises(ValidationError):
@@ -943,6 +1087,7 @@ class TripAPITests(TestCase):
             destination_latitude="29.9500",
             destination_longitude="32.5700",
             estimated_fare=Decimal("100.00"),
+            agreed_fare=Decimal("75.00"),
         )
 
         self.api_client.force_authenticate(user=captain_user)
@@ -952,7 +1097,7 @@ class TripAPITests(TestCase):
             ("arriving", {}, "ARRIVING"),
             ("arrived", {}, "ARRIVED"),
             ("start", {}, "IN_PROGRESS"),
-            ("complete", {"final_fare": "75.00"}, "COMPLETED"),
+            ("complete", {}, "COMPLETED"),
         ]
 
         for action, payload, expected_status in actions:
@@ -976,13 +1121,65 @@ class TripAPITests(TestCase):
 
         self.assertEqual(str(trip.final_fare), "75.00")
         self.assertIsNotNone(trip.accepted_at)
+        self.assertEqual(
+            trip.commission_percentage,
+            Decimal("15.00"),
+        )
         self.assertIsNotNone(trip.started_at)
         self.assertIsNotNone(trip.completed_at)
 
 
-    def test_complete_trip_rejects_invalid_final_fare(self):
+    def test_complete_trip_ignores_invalid_client_final_fare(self):
         captain_user, captain = self.create_approved_captain(
             username="invalid_fare_captain"
+        )
+        self.api_client.force_authenticate(user=captain_user)
+
+        for index, invalid_fare in enumerate([
+            "abc",
+            "-10",
+            "NaN",
+            "Infinity",
+            "12.345",
+            "100000000",
+        ]):
+            with self.subTest(final_fare=invalid_fare):
+                trip = Trip.objects.create(
+                    customer=self.customer,
+                    captain=captain,
+                    status=Trip.Status.IN_PROGRESS,
+                    pickup_address="Suez",
+                    pickup_latitude="29.9668",
+                    pickup_longitude="32.5498",
+                    destination_address="Port Tawfik",
+                    destination_latitude="29.9500",
+                    destination_longitude="32.5700",
+                    agreed_fare=Decimal("12.34"),
+                    commission_percentage=Decimal("15.00"),
+                )
+
+                response = self.api_client.post(
+                    f"/api/trips/{trip.pk}/actions/complete/",
+                    {"final_fare": invalid_fare},
+                    format="json",
+                )
+
+                self.assertEqual(
+                    response.status_code,
+                    200,
+                    msg=f"Fare {invalid_fare}: {response.data}",
+                )
+
+                trip.refresh_from_db()
+                self.assertEqual(trip.status, Trip.Status.COMPLETED)
+                self.assertEqual(trip.final_fare, Decimal("12.34"))
+
+
+
+
+    def test_complete_trip_accepts_extra_trailing_decimal_zero(self):
+        captain_user, captain = self.create_approved_captain(
+            username="trailing_zero_fare_captain"
         )
 
         trip = Trip.objects.create(
@@ -995,29 +1192,25 @@ class TripAPITests(TestCase):
             destination_address="Port Tawfik",
             destination_latitude="29.9500",
             destination_longitude="32.5700",
+            agreed_fare=Decimal("12.34"),
+            commission_percentage=Decimal("15.00"),
         )
 
         self.api_client.force_authenticate(user=captain_user)
 
-        for invalid_fare in ["abc", "-10", "NaN", "Infinity"]:
-            with self.subTest(final_fare=invalid_fare):
-                response = self.api_client.post(
-                    f"/api/trips/{trip.pk}/actions/complete/",
-                    {"final_fare": invalid_fare},
-                    format="json",
-                )
+        response = self.api_client.post(
+            f"/api/trips/{trip.pk}/actions/complete/",
+            {"final_fare": "99.99"},
+            format="json",
+        )
 
-                self.assertEqual(
-                    response.status_code,
-                    400,
-                    msg=f"Fare {invalid_fare}: {response.data}",
-                )
+        self.assertEqual(response.status_code, 200, msg=str(response.data))
 
-                trip.refresh_from_db()
-                self.assertEqual(trip.status, "IN_PROGRESS")
+        trip.refresh_from_db()
+        self.assertEqual(trip.status, Trip.Status.COMPLETED)
+        self.assertEqual(trip.final_fare, Decimal("12.34"))
 
-
-    def test_complete_trip_requires_final_fare(self):
+    def test_complete_trip_requires_agreed_fare(self):
         captain_user, captain = self.create_approved_captain(
             username="missing_fare_captain"
         )
@@ -1055,6 +1248,16 @@ class TripAPITests(TestCase):
 
         captain.refresh_from_db()
 
+        captain.current_latitude = Decimal("29.9668")
+        captain.current_longitude = Decimal("32.5498")
+        captain.location_updated_at = timezone.now()
+        captain.save(
+            update_fields=[
+                "current_latitude",
+                "current_longitude",
+                "location_updated_at",
+            ]
+        )
 
         requested_trip = Trip.objects.create(
             customer=self.customer,
@@ -1096,6 +1299,74 @@ class TripAPITests(TestCase):
         )
 
 
+    def test_available_trips_are_sorted_by_pickup_distance(self):
+        captain_user, captain = self.create_approved_captain(
+            username="distance_order_captain"
+        )
+        captain.current_latitude = Decimal("29.9668")
+        captain.current_longitude = Decimal("32.5498")
+        captain.location_updated_at = timezone.now()
+        captain.save(
+            update_fields=[
+                "current_latitude",
+                "current_longitude",
+                "location_updated_at",
+            ]
+        )
+
+        farther_trip = Trip.objects.create(
+            customer=self.customer,
+            pickup_address="Far pickup",
+            pickup_latitude="29.9000",
+            pickup_longitude="32.5498",
+            destination_address="Destination A",
+            destination_latitude="29.9500",
+            destination_longitude="32.5700",
+            estimated_fare=Decimal("50.00"),
+        )
+
+        closer_trip = Trip.objects.create(
+            customer=self.customer,
+            pickup_address="Close pickup",
+            pickup_latitude="29.9660",
+            pickup_longitude="32.5498",
+            destination_address="Destination B",
+            destination_latitude="29.9500",
+            destination_longitude="32.5700",
+            estimated_fare=Decimal("20.00"),
+        )
+
+        self.api_client.force_authenticate(user=captain_user)
+        response = self.api_client.get("/api/trips/available/")
+
+        self.assertEqual(response.status_code, 200, msg=str(response.data))
+        self.assertEqual(
+            [item["id"] for item in response.data],
+            [closer_trip.pk, farther_trip.pk],
+        )
+
+
+    def test_captain_with_stale_location_cannot_view_available_trips(self):
+        captain_user, captain = self.create_approved_captain(
+            username="stale_location_captain"
+        )
+        captain.current_latitude = Decimal("29.9668")
+        captain.current_longitude = Decimal("32.5498")
+        captain.location_updated_at = timezone.now() - timedelta(minutes=3)
+        captain.save(
+            update_fields=[
+                "current_latitude",
+                "current_longitude",
+                "location_updated_at",
+            ]
+        )
+
+        self.api_client.force_authenticate(user=captain_user)
+        response = self.api_client.get("/api/trips/available/")
+
+        self.assertEqual(response.status_code, 403)
+        self.assertIn("recent captain location", str(response.data).lower())
+
     def test_customer_cannot_view_available_trips(self):
         self.api_client.force_authenticate(user=self.customer_user)
 
@@ -1119,9 +1390,57 @@ class TripAPITests(TestCase):
 
 
 
+    def test_captain_without_available_wallet_balance_cannot_view_trips(self):
+        captain_user, captain = self.create_approved_captain(
+            username="zero_balance_available_captain"
+        )
+
+        wallet = CaptainWallet.objects.get(captain=captain)
+        wallet.balance = Decimal("0.00")
+        wallet.reserved_balance = Decimal("0.00")
+        wallet.save(update_fields=["balance", "reserved_balance"])
+
+        self.api_client.force_authenticate(user=captain_user)
+        response = self.api_client.get("/api/trips/available/")
+
+        self.assertEqual(response.status_code, 403)
+
+
+
+    def test_captain_with_fully_reserved_balance_cannot_view_trips(self):
+        captain_user, captain = self.create_approved_captain(
+            username="fully_reserved_available_captain"
+        )
+
+        wallet = CaptainWallet.objects.get(captain=captain)
+        wallet.balance = Decimal("100.00")
+        wallet.reserved_balance = Decimal("100.00")
+        wallet.save(update_fields=["balance", "reserved_balance"])
+
+        self.api_client.force_authenticate(user=captain_user)
+        response = self.api_client.get("/api/trips/available/")
+
+        self.assertEqual(response.status_code, 403)
+
+
+
+
+
+
     def test_available_trips_exposes_only_required_fields(self):
         captain_user, captain = self.create_approved_captain(
             username="privacy_api_captain"
+        )
+
+        captain.current_latitude = Decimal("29.9668")
+        captain.current_longitude = Decimal("32.5498")
+        captain.location_updated_at = timezone.now()
+        captain.save(
+            update_fields=[
+                "current_latitude",
+                "current_longitude",
+                "location_updated_at",
+            ]
         )
 
         Trip.objects.create(
@@ -1894,6 +2213,49 @@ class TripAPITests(TestCase):
         self.assertEqual(wallet.balance, Decimal("100.00"))
 
 
+    @patch(
+            "trips.services.lifecycle.release_trip_commission_reservation",
+            side_effect=ValidationError("Simulated reservation release failure"),
+        )
+    def test_cancel_failure_rolls_back_trip_cancellation(
+            self,
+            mocked_release,
+        ):
+            from trips.services.lifecycle import accept_trip
+
+            _, captain = self.create_approved_captain(
+                username="cancel_rollback_captain"
+            )
+
+            trip = Trip.objects.create(
+                customer=self.customer,
+                pickup_address="Suez",
+                pickup_latitude="29.9668",
+                pickup_longitude="32.5498",
+                destination_address="Port Tawfik",
+                destination_latitude="29.9500",
+                destination_longitude="32.5700",
+                estimated_fare=Decimal("100.00"),
+            )
+
+            accept_trip(trip_id=trip.pk, captain=captain)
+
+            self.api_client.force_authenticate(user=self.customer_user)
+            response = self.api_client.post(
+                f"/api/trips/{trip.pk}/cancel/",
+                {"reason": "Customer changed plans"},
+                format="json",
+            )
+
+            self.assertEqual(response.status_code, 400)
+
+            trip.refresh_from_db()
+            self.assertEqual(trip.status, Trip.Status.ACCEPTED)
+            self.assertIsNone(trip.cancelled_at)
+
+            mocked_release.assert_called_once_with(trip_id=trip.pk)
+
+
 
 
     def test_customer_cannot_cancel_completed_trip(self):
@@ -1991,6 +2353,184 @@ class TripAPITests(TestCase):
 
 
 
+
+
+    def test_captain_cannot_create_offer_with_non_finite_amount(self):
+        _, captain = self.create_approved_captain(
+            username="offer_non_finite_amount_captain",
+        )
+
+        TripPricingConfig.objects.create(
+            city="Suez",
+            base_fare=Decimal("10.00"),
+            price_per_km=Decimal("5.00"),
+            minimum_fare=Decimal("15.00"),
+            maximum_fare=Decimal("100.00"),
+            is_active=True,
+        )
+
+        trip = Trip.objects.create(
+            customer=self.customer,
+            pickup_address="Suez",
+            pickup_latitude="29.9668",
+            pickup_longitude="32.5498",
+            destination_address="Port Tawfik",
+            destination_latitude="29.9500",
+            destination_longitude="32.5700",
+            estimated_fare=Decimal("50.00"),
+        )
+
+        for invalid_amount in ("NaN", "Infinity", "-Infinity"):
+            with self.subTest(amount=invalid_amount):
+                with self.assertRaises(ValidationError):
+                    create_captain_offer(
+                        trip_id=trip.pk,
+                        captain=captain,
+                        amount=invalid_amount,
+                    )
+
+        self.assertFalse(
+            CaptainOffer.objects.filter(trip=trip).exists()
+        )
+
+
+
+    def test_captain_cannot_create_offer_with_more_than_two_decimal_places(self):
+        _, captain = self.create_approved_captain(
+            username="offer_decimal_precision_captain",
+        )
+
+        TripPricingConfig.objects.create(
+            city="Suez",
+            base_fare=Decimal("10.00"),
+            price_per_km=Decimal("5.00"),
+            minimum_fare=Decimal("15.00"),
+            maximum_fare=Decimal("100.00"),
+            is_active=True,
+        )
+
+        trip = Trip.objects.create(
+            customer=self.customer,
+            pickup_address="Suez",
+            pickup_latitude="29.9668",
+            pickup_longitude="32.5498",
+            destination_address="Port Tawfik",
+            destination_latitude="29.9500",
+            destination_longitude="32.5700",
+            estimated_fare=Decimal("50.00"),
+        )
+
+        with self.assertRaises(ValidationError):
+            create_captain_offer(
+                trip_id=trip.pk,
+                captain=captain,
+                amount="45.126",
+            )
+
+        self.assertFalse(
+            CaptainOffer.objects.filter(trip=trip).exists()
+        )
+
+
+
+
+
+    def test_captain_cannot_create_offer_above_decimal_field_maximum(self):
+        _, captain = self.create_approved_captain(
+            username="offer_maximum_amount_captain",
+        )
+
+        TripPricingConfig.objects.create(
+            city="Suez",
+            base_fare=Decimal("10.00"),
+            price_per_km=Decimal("5.00"),
+            minimum_fare=Decimal("15.00"),
+            maximum_fare=Decimal("100.00"),
+            is_active=True,
+        )
+
+        trip = Trip.objects.create(
+            customer=self.customer,
+            pickup_address="Suez",
+            pickup_latitude="29.9668",
+            pickup_longitude="32.5498",
+            destination_address="Port Tawfik",
+            destination_latitude="29.9500",
+            destination_longitude="32.5700",
+            estimated_fare=Decimal("50.00"),
+        )
+
+        with self.assertRaises(ValidationError):
+            create_captain_offer(
+                trip_id=trip.pk,
+                captain=captain,
+                amount="100000000",
+            )
+
+        self.assertFalse(
+            CaptainOffer.objects.filter(trip=trip).exists()
+        )
+
+
+
+    def test_accept_offer_fails_with_insufficient_wallet_balance(self):
+        TripPricingConfig.objects.create(
+            city="Suez",
+            base_fare=Decimal("10.00"),
+            price_per_km=Decimal("5.00"),
+            minimum_fare=Decimal("15.00"),
+            maximum_fare=Decimal("100.00"),
+            is_active=True,
+        )
+
+        _, captain = self.create_approved_captain(
+            username="offer_insufficient_balance_captain",
+        )
+
+        wallet = CaptainWallet.objects.get(captain=captain)
+        wallet.balance = Decimal("1.00")
+        wallet.reserved_balance = Decimal("0.00")
+        wallet.save(update_fields=["balance", "reserved_balance"])
+
+        trip = Trip.objects.create(
+            customer=self.customer,
+            pickup_address="Suez",
+            pickup_latitude="29.9668",
+            pickup_longitude="32.5498",
+            destination_address="Port Tawfik",
+            destination_latitude="29.9500",
+            destination_longitude="32.5700",
+            estimated_fare=Decimal("50.00"),
+        )
+
+        offer = create_captain_offer(
+            trip_id=trip.pk,
+            captain=captain,
+            amount="45.00",
+        )
+
+        with self.assertRaises(ValidationError):
+            accept_captain_offer(
+                offer_id=offer.pk,
+                customer=self.customer,
+            )
+
+        trip.refresh_from_db()
+        offer.refresh_from_db()
+        wallet.refresh_from_db()
+
+        self.assertEqual(trip.status, Trip.Status.REQUESTED)
+        self.assertIsNone(trip.captain_id)
+        self.assertIsNone(trip.vehicle_id)          # 👈 الإضافة الجديدة
+        self.assertEqual(offer.status, CaptainOffer.Status.PENDING)
+        self.assertEqual(wallet.balance, Decimal("1.00"))
+        self.assertEqual(wallet.reserved_balance, Decimal("0.00"))
+
+        self.assertFalse(
+            FinancialTransaction.objects.filter(
+                reference=f"trip-commission-reserve:{trip.pk}"
+            ).exists()
+        )
 
 
     def test_captain_with_invalid_documents_cannot_accept_trip(self):

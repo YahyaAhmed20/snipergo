@@ -1,0 +1,22 @@
+
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+<h1>Reject cash deposit</h1>
+
+<p><strong>Captain:</strong> {{ topup.captain.user.username }}</p>
+<p><strong>Amount:</strong> {{ topup.amount }}</p>
+<p><strong>Reference:</strong> {{ topup.reference }}</p>
+<p><strong>Status:</strong> {{ topup.get_status_display }}</p>
+
+<form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+
+    <button type="submit">Confirm rejection</button>
+
+    <a href="{% url 'admin:accounts_wallettopuprequest_changelist' %}">
+        Cancel
+    </a>
+</form>
+{% endblock %}

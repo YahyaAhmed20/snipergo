@@ -90,6 +90,16 @@ class Trip(models.Model):
         null=True,
         blank=True,
     )
+    commission_percentage = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        validators=[
+            MinValueValidator(Decimal("0.00")),
+            MaxValueValidator(Decimal("100.00")),
+        ],
+        null=True,
+        blank=True,
+    )
     final_fare = models.DecimalField(
         max_digits=10,
         decimal_places=2,
@@ -273,6 +283,13 @@ class CommissionConfig(models.Model):
     class Meta:
         verbose_name = "Commission Configuration"
         verbose_name_plural = "Commission Configurations"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["is_active"],
+                condition=models.Q(is_active=True),
+                name="unique_active_commission_config",
+            ),
+        ]
 
     def __str__(self):
         return f"{self.name}: {self.percentage}%"

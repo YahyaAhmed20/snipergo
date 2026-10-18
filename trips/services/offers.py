@@ -8,7 +8,7 @@ from django.utils import timezone
 
 from accounts.models import CaptainProfile
 from accounts.services.reviews import validate_captain_documents
-from trips.models import CaptainOffer, Trip
+from trips.models import CaptainOffer, CommissionConfig, Trip
 from trips.services.negotiation import calculate_negotiation_range
 from trips.services.wallet import reserve_trip_commission
 
@@ -53,6 +53,16 @@ def create_captain_offer(*, trip_id, captain, amount):
 
     if not offer_amount.is_finite() or offer_amount < 0:
         raise ValidationError("Offer amount must be finite and non-negative.")
+
+    if offer_amount != offer_amount.quantize(Decimal("0.01")):
+        raise ValidationError(
+            "Offer amount cannot have more than two decimal places."
+        )
+
+    if offer_amount >= Decimal("100000000"):
+        raise ValidationError(
+            "Offer amount exceeds the allowed maximum."
+        )
 
     minimum_offer, maximum_offer = calculate_negotiation_range(
         city="Suez",
@@ -160,9 +170,18 @@ def accept_captain_offer(*, offer_id, customer):
             if vehicle is None:
                 raise ValidationError("Captain has no approved vehicle.")
 
+            commission_config = CommissionConfig.objects.filter(
+                is_active=True
+            ).order_by("id").first()
+            if commission_config is None:
+                raise ValidationError(
+                    "No active commission configuration exists."
+                )
+
             trip.captain = captain
             trip.vehicle = vehicle
             trip.agreed_fare = offer.amount
+            trip.commission_percentage = commission_config.percentage
             trip.status = Trip.Status.ACCEPTED
             trip.accepted_at = now
             trip.save(
@@ -170,6 +189,7 @@ def accept_captain_offer(*, offer_id, customer):
                     "captain",
                     "vehicle",
                     "agreed_fare",
+                    "commission_percentage",
                     "status",
                     "accepted_at",
                     "updated_at",

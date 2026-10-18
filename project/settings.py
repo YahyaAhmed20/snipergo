@@ -12,6 +12,8 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 import os
 from pathlib import Path
 
+import dj_database_url
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -20,23 +22,49 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-1+icsnp2!842vrd98+y_c7#o%=1%tc!9ol=1i-5=vg8i8^o@+2'
 
+SECRET_KEY = os.environ["DJANGO_SECRET_KEY"]
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get("DJANGO_DEBUG", "False").lower() in ("true", "1", "yes")
 
 ALLOWED_HOSTS = [
-    'snipergo-production.up.railway.app',
-     "127.0.0.1",
-    "localhost",
+    host.strip()
+    for host in os.environ.get(
+        "DJANGO_ALLOWED_HOSTS",
+        "snipergo-production.up.railway.app,127.0.0.1,localhost",
+    ).split(",")
+    if host.strip()
 ]
+
 
 CSRF_TRUSTED_ORIGINS = [
-    # "https://fiber-production-0802.up.railway.app",
-    "https://snipergo-production.up.railway.app",
- 
-
+    origin.strip()
+    for origin in os.environ.get(
+        "DJANGO_CSRF_TRUSTED_ORIGINS",
+        "https://snipergo-production.up.railway.app",
+    ).split(",")
+    if origin.strip()
 ]
+
+
+
+# HTTPS and secure cookie settings
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+SECURE_SSL_REDIRECT = (
+    os.environ.get("DJANGO_SECURE_SSL_REDIRECT", "False").lower()
+    in ("true", "1", "yes")
+)
+
+SESSION_COOKIE_SECURE = (
+    os.environ.get("DJANGO_SESSION_COOKIE_SECURE", str(not DEBUG)).lower()
+    in ("true", "1", "yes")
+)
+
+CSRF_COOKIE_SECURE = (
+    os.environ.get("DJANGO_CSRF_COOKIE_SECURE", str(not DEBUG)).lower()
+    in ("true", "1", "yes")
+)
 
 # Application definition
 
@@ -48,7 +76,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     "rest_framework",
-    
+
     "accounts",
     'vehicles',
     'trips',
@@ -91,24 +119,30 @@ WSGI_APPLICATION = 'project.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.sqlite3',
-#         'NAME': BASE_DIR / 'db.sqlite3',
-#     }
-# }
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.contrib.gis.db.backends.postgis",
-        "NAME": "postgis_db",
-        "USER": "postgis_admin",
-        "PASSWORD": "l3rd32akti6gyyg2k0qpz6lw4ewklkn1",
-        "HOST": "turntable.proxy.rlwy.net",
-        "PORT": "54538",
-        "CONN_MAX_AGE": 60,
+if DATABASE_URL:
+    DATABASES = {
+        "default": dj_database_url.parse(
+            DATABASE_URL,
+            conn_max_age=60,
+        )
     }
-}
+    DATABASES["default"]["ENGINE"] = (
+        "django.contrib.gis.db.backends.postgis"
+    )
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.contrib.gis.db.backends.postgis",
+            "NAME": "postgis_db",
+            "USER": "postgis_admin",
+            "PASSWORD": os.environ.get("POSTGIS_PASSWORD", ""),
+            "HOST": os.environ.get("POSTGIS_HOST", ""),
+            "PORT": os.environ.get("POSTGIS_PORT", "5432"),
+            "CONN_MAX_AGE": 60,
+        }
+    }
 
 
 # Password validation
@@ -162,10 +196,6 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTH_USER_MODEL = "accounts.User"
 
 
-import os
-
-import os
-
 if os.name == "nt":
     GDAL_LIBRARY_PATH = (
         r"C:\Users\hp\AppData\Local\Programs\OSGeo4W\bin\gdal313.dll"
@@ -173,7 +203,19 @@ if os.name == "nt":
     GEOS_LIBRARY_PATH = (
         r"C:\Users\hp\AppData\Local\Programs\OSGeo4W\bin\geos_c.dll"
     )
-    
+
 LOGIN_URL = "/accounts/login/"
 LOGIN_REDIRECT_URL = "/accounts/dashboard/"
 LOGOUT_REDIRECT_URL = "/accounts/login/"
+
+
+# Paymob configuration
+PAYMOB_API_KEY = os.environ.get("PAYMOB_API_KEY", "")
+PAYMOB_SECRET_KEY = os.environ.get("PAYMOB_SECRET_KEY", "")
+PAYMOB_PUBLIC_KEY = os.environ.get("PAYMOB_PUBLIC_KEY", "")
+PAYMOB_INTEGRATION_ID = os.environ.get("PAYMOB_INTEGRATION_ID", "")
+PAYMOB_IFRAME_ID = os.environ.get("PAYMOB_IFRAME_ID", "")
+PAYMOB_CURRENCY = os.environ.get("PAYMOB_CURRENCY", "EGP")
+PAYMOB_HMAC_SECRET = os.environ.get("PAYMOB_HMAC_SECRET", "")
+PAYMOB_NOTIFICATION_URL = os.environ.get("PAYMOB_NOTIFICATION_URL", "")
+PAYMOB_REDIRECTION_URL = os.environ.get("PAYMOB_REDIRECTION_URL", "")

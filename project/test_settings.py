@@ -29,6 +29,7 @@ DATABASES = {
     )
 }
 
+DATABASES["default"]["ENGINE"] = "django.contrib.gis.db.backends.postgis"
 DATABASES["default"]["TEST"] = {
     "NAME": "test_snipergo_test",
 }

@@ -4,7 +4,6 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 
 from trips.models import (
-    CommissionConfig,
     Trip,
     TripFinancialRecord,
 )
@@ -61,22 +60,20 @@ def create_trip_financial_record(*, trip_id):
     if existing_record:
         return existing_record
 
-    config = CommissionConfig.objects.filter(
-        is_active=True
-    ).order_by("id").first()
-
-    if config is None:
-        raise ValidationError("No active commission configuration exists.")
+    if trip.commission_percentage is None:
+        raise ValidationError(
+            "The trip commission percentage has not been set."
+        )
 
     commission, captain_earnings = calculate_commission(
         gross_fare=trip.final_fare,
-        percentage=config.percentage,
+        percentage=trip.commission_percentage,
     )
 
     return TripFinancialRecord.objects.create(
         trip=trip,
         gross_fare=trip.final_fare,
-        commission_percentage=config.percentage,
+        commission_percentage=trip.commission_percentage,
         commission_amount=commission,
         captain_earnings=captain_earnings,
     )

@@ -3,7 +3,7 @@ from decimal import Decimal
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.test import TestCase
-
+from trips.models import FinancialTransaction
 from trips.models import (
     CommissionConfig,
     Trip,
@@ -101,6 +101,7 @@ class TripFinancialRecordTests(TestCase):
             destination_longitude=Decimal("32.5600"),
             status=Trip.Status.COMPLETED,
             final_fare=Decimal("100.00"),
+            commission_percentage=Decimal("10.00"),
         )
 
         CommissionConfig.objects.create(
@@ -145,13 +146,25 @@ class TripFinancialRecordTests(TestCase):
                 trip_id=self.trip.pk,
             )
 
-    def test_rejects_missing_commission_config(self):
+    def test_uses_trip_commission_when_config_is_missing(self):
         CommissionConfig.objects.all().delete()
 
-        with self.assertRaises(ValidationError):
-            create_trip_financial_record(
-                trip_id=self.trip.pk,
-            )
+        record = create_trip_financial_record(
+            trip_id=self.trip.pk,
+        )
+
+        self.assertEqual(
+            record.commission_percentage,
+            Decimal("10.00"),
+        )
+        self.assertEqual(
+            record.commission_amount,
+            Decimal("10.00"),
+        )
+        self.assertEqual(
+            record.captain_earnings,
+            Decimal("90.00"),
+        )
 
     def test_database_prevents_duplicate_financial_records(self):
         record = create_trip_financial_record(
@@ -268,3 +281,74 @@ class TripFinancialRecordTests(TestCase):
                 trip_id=self.trip.pk,
                 confirmed_by=self.captain_user,
             )
+
+
+
+    def test_repeated_cash_collection_confirmation_is_idempotent(self):
+        record = create_trip_financial_record(
+            trip_id=self.trip.pk,
+        )
+
+        self.trip.payment_method = Trip.PaymentMethod.CASH
+        self.trip.save(update_fields=["payment_method"])
+
+        first = confirm_cash_collection(
+            trip_id=self.trip.pk,
+            confirmed_by=self.captain_user,
+        )
+        second = confirm_cash_collection(
+            trip_id=self.trip.pk,
+            confirmed_by=self.captain_user,
+        )
+
+        self.assertEqual(first.pk, second.pk)
+        self.assertEqual(
+            second.collection_status,
+            TripFinancialRecord.CollectionStatus.COLLECTED,
+        )
+        self.assertEqual(
+            TripFinancialRecord.objects.filter(trip=self.trip).count(),
+            1,
+        )
+
+
+
+    def test_repeated_cash_collection_confirmation_is_idempotent(self):
+        create_trip_financial_record(trip_id=self.trip.pk)
+
+        self.trip.payment_method = Trip.PaymentMethod.CASH
+        self.trip.save(update_fields=["payment_method"])
+
+        first = confirm_cash_collection(
+            trip_id=self.trip.pk,
+            confirmed_by=self.captain_user,
+        )
+        second = confirm_cash_collection(
+            trip_id=self.trip.pk,
+            confirmed_by=self.captain_user,
+        )
+
+        self.assertEqual(first.pk, second.pk)
+        self.assertEqual(
+            second.collection_status,
+            TripFinancialRecord.CollectionStatus.COLLECTED,
+        )
+
+
+    def test_cash_collection_confirmation_does_not_create_financial_transactions(self):
+        create_trip_financial_record(trip_id=self.trip.pk)
+
+        self.trip.payment_method = Trip.PaymentMethod.CASH
+        self.trip.save(update_fields=["payment_method"])
+
+        before_count = FinancialTransaction.objects.count()
+
+        confirm_cash_collection(
+            trip_id=self.trip.pk,
+            confirmed_by=self.captain_user,
+        )
+
+        self.assertEqual(
+            FinancialTransaction.objects.count(),
+            before_count,
+        )

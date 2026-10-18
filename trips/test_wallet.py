@@ -1,4 +1,4 @@
-from decimal import Decimal
+﻿from decimal import Decimal
 
 from django.core.exceptions import ValidationError
 from django.test import TestCase
@@ -52,6 +52,7 @@ class WalletServiceTests(TestCase):
             destination_longitude="32.5600",
             status=Trip.Status.COMPLETED,
             final_fare=Decimal("100.00"),
+            commission_percentage=Decimal("10.00"),
         )
 
         CommissionConfig.objects.create(
@@ -111,6 +112,40 @@ class WalletServiceTests(TestCase):
                 amount=Decimal("0.001"),
                 reference="tiny-topup-test",
             )
+
+
+    def test_credit_wallet_rejects_amount_above_transaction_limit(self):
+        with self.assertRaises(ValidationError):
+            credit_wallet(
+                captain=self.captain,
+                amount="100000000.00",
+                reference="topup-over-limit",
+            )
+
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.balance, Decimal("100.00"))
+        self.assertFalse(
+            FinancialTransaction.objects.filter(
+                reference="topup-over-limit"
+            ).exists()
+        )
+
+    def test_credit_wallet_rejects_extremely_large_amount(self):
+        with self.assertRaises(ValidationError):
+            credit_wallet(
+                captain=self.captain,
+                amount="1E+100000",
+                reference="topup-extreme",
+            )
+
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.balance, Decimal("100.00"))
+        self.assertFalse(
+            FinancialTransaction.objects.filter(
+                reference="topup-extreme"
+            ).exists()
+        )
+
 
     def test_deducts_commission_once(self):
         wallet = deduct_trip_commission(
@@ -181,6 +216,36 @@ class WalletServiceTests(TestCase):
         self.assertEqual(wallet.balance, Decimal("100.00"))
         self.assertEqual(wallet.reserved_balance, Decimal("10.00"))
         self.assertEqual(wallet.available_balance, Decimal("90.00"))
+
+
+
+    def test_zero_percent_commission_reserves_zero_without_creating_invalid_transaction(self):
+        CommissionConfig.objects.filter(is_active=True).update(
+            percentage=Decimal("0.00")
+        )
+
+        self.trip.status = Trip.Status.ACCEPTED
+        self.trip.estimated_fare = Decimal("100.00")
+        self.trip.commission_percentage = Decimal("0.00")
+        self.trip.save(
+            update_fields=[
+                "status",
+                "estimated_fare",
+                "commission_percentage",
+            ]
+        )
+
+        wallet = reserve_trip_commission(trip_id=self.trip.pk)
+        wallet.refresh_from_db()
+
+        self.assertEqual(wallet.balance, Decimal("100.00"))
+        self.assertEqual(wallet.reserved_balance, Decimal("0.00"))
+        self.assertFalse(
+            FinancialTransaction.objects.filter(
+                reference=f"trip-commission-reserve:{self.trip.pk}"
+            ).exists()
+        )
+
 
     def test_reserve_trip_commission_does_not_reserve_twice(self):
         self.trip.status = Trip.Status.ACCEPTED
@@ -448,6 +513,7 @@ class WalletServiceTests(TestCase):
             destination_longitude=Decimal("32.5600"),
             status=Trip.Status.COMPLETED,
             final_fare=Decimal("100.00"),
+            commission_percentage=Decimal("10.00"),
         )
         other_record = create_trip_financial_record(
             trip_id=other_trip.pk
@@ -557,6 +623,7 @@ class WalletServiceTests(TestCase):
             destination_longitude=Decimal("32.5600"),
             status=Trip.Status.COMPLETED,
             final_fare=Decimal("100.00"),
+            commission_percentage=Decimal("10.00"),
         )
         create_trip_financial_record(trip_id=dummy_trip.pk)
 
@@ -584,6 +651,7 @@ class WalletServiceTests(TestCase):
             destination_longitude=Decimal("32.5600"),
             status=Trip.Status.COMPLETED,
             final_fare=Decimal("100.00"),
+            commission_percentage=Decimal("10.00"),
         )
         target_record = create_trip_financial_record(trip_id=target_trip.pk)
 
@@ -631,6 +699,7 @@ class WalletServiceTests(TestCase):
             destination_longitude=Decimal("32.5600"),
             status=Trip.Status.COMPLETED,
             final_fare=Decimal("100.00"),
+            commission_percentage=Decimal("10.00"),
         )
         create_trip_financial_record(trip_id=dummy_trip.pk)
 
@@ -658,6 +727,7 @@ class WalletServiceTests(TestCase):
             destination_longitude=Decimal("32.5600"),
             status=Trip.Status.COMPLETED,
             final_fare=Decimal("100.00"),
+            commission_percentage=Decimal("10.00"),
         )
         target_record = create_trip_financial_record(trip_id=target_trip.pk)
 
@@ -806,6 +876,61 @@ class WalletServiceTests(TestCase):
 
 
 
+
+    def test_final_commission_above_reservation_rejects_insufficient_available_balance(self):
+        self.trip.status = Trip.Status.ACCEPTED
+        self.trip.estimated_fare = Decimal("100.00")
+        self.trip.save(update_fields=["status", "estimated_fare"])
+
+        reserve_trip_commission(trip_id=self.trip.pk)
+
+        self.wallet.refresh_from_db()
+        self.wallet.balance = Decimal("12.00")
+        self.wallet.save(update_fields=["balance", "updated_at"])
+
+        self.trip.status = Trip.Status.COMPLETED
+        self.trip.final_fare = Decimal("150.00")
+        self.trip.save(update_fields=["status", "final_fare"])
+
+        self.record.refresh_from_db()
+        self.record.gross_fare = Decimal("150.00")
+        self.record.commission_amount = Decimal("15.00")
+        self.record.captain_earnings = Decimal("135.00")
+        self.record.save(
+            update_fields=[
+                "gross_fare",
+                "commission_amount",
+                "captain_earnings",
+            ]
+        )
+
+        with self.assertRaisesMessage(
+            ValidationError,
+            "Insufficient available wallet balance to settle commission.",
+        ):
+            deduct_trip_commission(
+                trip_financial_record_id=self.record.pk,
+            )
+
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.balance, Decimal("12.00"))
+        self.assertEqual(self.wallet.reserved_balance, Decimal("10.00"))
+        self.assertEqual(self.wallet.available_balance, Decimal("2.00"))
+
+        self.assertFalse(
+            FinancialTransaction.objects.filter(
+                reference=f"trip-commission:{self.record.pk}",
+            ).exists()
+        )
+
+        self.record.refresh_from_db()
+        self.assertEqual(
+            self.record.commission_status,
+            TripFinancialRecord.CommissionStatus.PENDING,
+        )
+
+
+
     def test_final_commission_below_reservation_releases_excess(self):
         self.trip.status = Trip.Status.ACCEPTED
         self.trip.estimated_fare = Decimal("100.00")
@@ -890,4 +1015,211 @@ class WalletServiceTests(TestCase):
             self.wallet.balance,
             balance_after_first_deduction,
             "Repeated commission deduction must not deduct twice.",
+        )
+
+
+
+
+    def test_deduction_rejects_reservation_linked_to_wrong_captain(self):
+        self.trip.status = Trip.Status.ACCEPTED
+        self.trip.estimated_fare = Decimal("100.00")
+        self.trip.save(update_fields=["status", "estimated_fare"])
+
+        reserve_trip_commission(trip_id=self.trip.pk)
+
+        reservation = FinancialTransaction.objects.get(
+            reference=f"trip-commission-reserve:{self.trip.pk}"
+        )
+
+        other_user = User.objects.create_user(
+            username="wrong_reservation_captain",
+            password="test-password",
+            role=User.Role.CAPTAIN,
+        )
+        other_captain = CaptainProfile.objects.create(user=other_user)
+
+        reservation.captain = other_captain
+        reservation.save(update_fields=["captain"])
+
+        self.trip.status = Trip.Status.COMPLETED
+        self.trip.final_fare = Decimal("100.00")
+        self.trip.save(update_fields=["status", "final_fare"])
+
+        with self.assertRaises(ValidationError):
+            deduct_trip_commission(
+                trip_financial_record_id=self.record.pk
+            )
+
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.balance, Decimal("100.00"))
+        self.assertEqual(self.wallet.reserved_balance, Decimal("10.00"))
+        self.assertFalse(
+            FinancialTransaction.objects.filter(
+                reference=f"trip-commission:{self.record.pk}"
+            ).exists()
+        )
+
+
+
+
+
+    def test_release_rejects_reservation_linked_to_wrong_captain(self):
+        self.trip.status = Trip.Status.ACCEPTED
+        self.trip.estimated_fare = Decimal("100.00")
+        self.trip.save(update_fields=["status", "estimated_fare"])
+
+        reserve_trip_commission(trip_id=self.trip.pk)
+
+        reservation = FinancialTransaction.objects.get(
+            reference=f"trip-commission-reserve:{self.trip.pk}"
+        )
+
+        other_user = User.objects.create_user(
+            username="wrong_release_reservation_captain",
+            password="test-password",
+            role=User.Role.CAPTAIN,
+        )
+        other_captain = CaptainProfile.objects.create(user=other_user)
+
+        reservation.captain = other_captain
+        reservation.save(update_fields=["captain"])
+
+        self.trip.status = Trip.Status.CANCELLED
+        self.trip.save(update_fields=["status"])
+
+        with self.assertRaises(ValidationError):
+            release_trip_commission_reservation(trip_id=self.trip.pk)
+
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.balance, Decimal("100.00"))
+        self.assertEqual(self.wallet.reserved_balance, Decimal("10.00"))
+
+        self.assertFalse(
+            FinancialTransaction.objects.filter(
+                reference=f"trip-commission-release:{self.trip.pk}"
+            ).exists()
+        )
+
+
+
+
+    def test_repeated_zero_commission_settlement_releases_reservation_once(self):
+        self.trip.status = Trip.Status.ACCEPTED
+        self.trip.estimated_fare = Decimal("100.00")
+        self.trip.save(update_fields=["status", "estimated_fare"])
+
+        reserve_trip_commission(trip_id=self.trip.pk)
+
+        self.trip.status = Trip.Status.COMPLETED
+        self.trip.final_fare = Decimal("0.00")
+        self.trip.save(update_fields=["status", "final_fare"])
+
+        self.record.refresh_from_db()
+        self.record.gross_fare = Decimal("0.00")
+        self.record.commission_amount = Decimal("0.00")
+        self.record.captain_earnings = Decimal("0.00")
+        self.record.save(
+            update_fields=[
+                "gross_fare",
+                "commission_amount",
+                "captain_earnings",
+            ]
+        )
+
+        for _ in range(2):
+            deduct_trip_commission(
+                trip_financial_record_id=self.record.pk
+            )
+
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.balance, Decimal("100.00"))
+        self.assertEqual(self.wallet.reserved_balance, Decimal("0.00"))
+
+        self.assertEqual(
+            FinancialTransaction.objects.filter(
+                reference=f"trip-commission-release-zero:{self.trip.pk}"
+            ).count(),
+            1,
+        )
+        self.assertFalse(
+            FinancialTransaction.objects.filter(
+                reference=f"trip-commission:{self.record.pk}"
+            ).exists()
+        )
+
+
+
+    def test_zero_final_commission_releases_existing_reservation(self):
+        self.trip.status = Trip.Status.ACCEPTED
+        self.trip.estimated_fare = Decimal("100.00")
+        self.trip.save(update_fields=["status", "estimated_fare"])
+
+        reserve_trip_commission(trip_id=self.trip.pk)
+
+        self.trip.status = Trip.Status.COMPLETED
+        self.trip.final_fare = Decimal("0.00")
+        self.trip.save(update_fields=["status", "final_fare"])
+
+        self.record.refresh_from_db()
+        self.record.gross_fare = Decimal("0.00")
+        self.record.commission_amount = Decimal("0.00")
+        self.record.captain_earnings = Decimal("0.00")
+        self.record.save(
+            update_fields=[
+                "gross_fare",
+                "commission_amount",
+                "captain_earnings",
+            ]
+        )
+
+        wallet = deduct_trip_commission(
+            trip_financial_record_id=self.record.pk
+        )
+        wallet.refresh_from_db()
+
+        self.assertEqual(wallet.balance, Decimal("100.00"))
+        self.assertEqual(wallet.reserved_balance, Decimal("0.00"))
+        self.assertEqual(wallet.available_balance, Decimal("100.00"))
+        self.assertFalse(
+            FinancialTransaction.objects.filter(
+                reference=f"trip-commission:{self.record.pk}"
+            ).exists()
+        )
+
+
+
+
+    def test_zero_percent_commission_completes_settlement_without_zero_transaction(self):
+        CommissionConfig.objects.filter(is_active=True).update(
+            percentage=Decimal("0.00")
+        )
+
+        self.trip.status = Trip.Status.COMPLETED
+        self.trip.final_fare = Decimal("100.00")
+        self.trip.save(update_fields=["status", "final_fare"])
+
+        self.record.refresh_from_db()
+        self.record.commission_amount = Decimal("0.00")
+        self.record.captain_earnings = Decimal("100.00")
+        self.record.save(
+            update_fields=["commission_amount", "captain_earnings"]
+        )
+
+        wallet = deduct_trip_commission(
+            trip_financial_record_id=self.record.pk
+        )
+        wallet.refresh_from_db()
+
+        self.assertEqual(wallet.balance, Decimal("100.00"))
+        self.assertEqual(wallet.reserved_balance, Decimal("0.00"))
+        self.assertFalse(
+            FinancialTransaction.objects.filter(
+                reference=f"trip-commission:{self.record.pk}"
+            ).exists()
+        )
+
+        self.record.refresh_from_db()
+        self.assertEqual(
+            self.record.commission_status,
+            TripFinancialRecord.CommissionStatus.COLLECTED,
         )

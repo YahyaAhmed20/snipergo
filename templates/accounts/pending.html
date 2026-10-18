@@ -40,13 +40,120 @@
                 Manage My Documents
             </a>
         </p>
+
+<p>
+    <a href="{% url 'accounts:request_cash_topup' %}">
+        Request Wallet Cash Deposit
+    </a>
+</p>
+
+
+        <p>
+            <a href="{% url 'vehicles:my_vehicles' %}">
+                Register / Manage My Vehicles
+            </a>
+        </p>
     {% else %}
         <p>{{ message }}</p>
     {% endif %}
+
+
+
 
     <form method="post" action="{% url 'accounts:logout' %}">
         {% csrf_token %}
         <button type="submit">Log out</button>
     </form>
+
+    <script>
+    (function () {
+        const captainIsApproved = {% if captain and captain.approval_status == "APPROVED" %}true{% else %}false{% endif %};
+        const captainIsOnline = {% if captain and captain.operational_status == "ONLINE" %}true{% else %}false{% endif %};
+
+        if (!captainIsApproved || !captainIsOnline) return;
+
+        if (!("geolocation" in navigator)) {
+            console.error("Geolocation is not supported by this browser.");
+            return;
+        }
+
+        const endpoint = "{% url 'accounts:captain_location_update' %}";
+        const csrfToken = document.querySelector(
+            'input[name="csrfmiddlewaretoken"]'
+        )?.value;
+
+        if (!csrfToken) {
+            console.error("CSRF token is unavailable.");
+            return;
+        }
+
+        let stopped = false;
+        let timerId = null;
+        let requestInProgress = false;
+
+        async function sendLocation(position) {
+            if (stopped || requestInProgress) return;
+
+            requestInProgress = true;
+
+            try {
+                const response = await fetch(endpoint, {
+                    method: "POST",
+                    credentials: "same-origin",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRFToken": csrfToken
+                    },
+                    body: JSON.stringify({
+                        latitude: position.coords.latitude,
+                        longitude: position.coords.longitude
+                    })
+                });
+
+                if (!response.ok) {
+                    console.error(
+                        "Location update failed:",
+                        response.status,
+                        await response.text()
+                    );
+                }
+            } catch (error) {
+                console.error("Unable to send captain location:", error);
+            } finally {
+                requestInProgress = false;
+            }
+        }
+
+        function requestLocation() {
+            if (stopped || document.hidden) return;
+
+            navigator.geolocation.getCurrentPosition(
+                sendLocation,
+                function (error) {
+                    console.error("Unable to get captain location:", error.message);
+                },
+                {
+                    enableHighAccuracy: true,
+                    timeout: 15000,
+                    maximumAge: 10000
+                }
+            );
+        }
+
+        requestLocation();
+        timerId = window.setInterval(requestLocation, 30000);
+
+        document.addEventListener("visibilitychange", function () {
+            if (!document.hidden) requestLocation();
+        });
+
+        window.addEventListener("pagehide", function () {
+            stopped = true;
+            if (timerId !== null) {
+                window.clearInterval(timerId);
+            }
+        });
+    })();
+    </script>
 </body>
 </html>

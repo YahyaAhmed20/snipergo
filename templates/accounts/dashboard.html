@@ -1,16 +1,464 @@
+
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>SNIPER GO - Customer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SNIPER GO | احجز رحلتك</title>
+
+    <link rel="stylesheet"
+          href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+
+    <style>
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            font-family: Tahoma, Arial, sans-serif;
+            background: #f3f5f8;
+            color: #182230;
+        }
+
+        header {
+            background: #111827;
+            color: white;
+            padding: 18px 6%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: 23px;
+            color: #facc15;
+        }
+
+        header p {
+            margin: 7px 0 0;
+            font-size: 13px;
+            color: #d1d5db;
+        }
+
+        button, input, select { font: inherit; }
+
+        button {
+            cursor: pointer;
+            border: 0;
+            border-radius: 9px;
+            padding: 12px 16px;
+        }
+
+        .logout {
+            background: #374151;
+            color: white;
+        }
+
+        main {
+            width: min(1100px, 94%);
+            margin: 28px auto;
+            display: grid;
+            grid-template-columns: minmax(280px, 380px) 1fr;
+            gap: 22px;
+        }
+
+        .panel {
+            background: white;
+            border-radius: 15px;
+            padding: 22px;
+            box-shadow: 0 4px 20px #1018280c;
+        }
+
+        h2 { margin-top: 0; font-size: 21px; }
+
+        .welcome {
+            color: #667085;
+            font-size: 14px;
+            margin-bottom: 22px;
+        }
+
+        label {
+            display: block;
+            margin: 17px 0 7px;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #d0d5dd;
+            border-radius: 9px;
+            background: white;
+        }
+
+        input:focus, select:focus {
+            outline: 2px solid #facc15;
+            border-color: transparent;
+        }
+
+        .map-help {
+            color: #667085;
+            font-size: 13px;
+            line-height: 1.8;
+        }
+
+        #map {
+            width: 100%;
+            height: 500px;
+            border-radius: 12px;
+            z-index: 1;
+        }
+
+        .target-buttons {
+            display: flex;
+            gap: 8px;
+            margin: 12px 0;
+        }
+
+        .target-buttons button {
+            flex: 1;
+            background: #eef2f6;
+            color: #344054;
+        }
+
+        .target-buttons button.active {
+            background: #facc15;
+            color: #111827;
+            font-weight: bold;
+        }
+
+        .primary {
+            width: 100%;
+            margin-top: 22px;
+            background: #facc15;
+            color: #111827;
+            font-weight: bold;
+        }
+
+        button:disabled {
+            opacity: .6;
+            cursor: not-allowed;
+        }
+
+        #message {
+            display: none;
+            margin-top: 16px;
+            padding: 12px;
+            border-radius: 9px;
+            line-height: 1.7;
+            overflow-wrap: anywhere;
+        }
+
+        #message.error {
+            display: block;
+            background: #fef3f2;
+            color: #b42318;
+        }
+
+        #message.success {
+            display: block;
+            background: #ecfdf3;
+            color: #027a48;
+        }
+
+        .coordinates {
+            color: #667085;
+            font-size: 12px;
+            direction: ltr;
+            text-align: right;
+            margin-top: 6px;
+        }
+
+        @media (max-width: 760px) {
+            main { grid-template-columns: 1fr; }
+            #map { height: 380px; }
+            header { padding: 16px 4%; }
+            header h1 { font-size: 19px; }
+            .panel { padding: 17px; }
+        }
+    </style>
 </head>
 <body>
-    <h1>SNIPER GO</h1>
-    <h2>Customer Dashboard</h2>
-    <p>Welcome, {{ request.user.first_name|default:request.user.username }}.</p>
+
+<header>
+    <div>
+        <h1>SNIPER GO</h1>
+        <p>مشوارك في السويس يبدأ من هنا</p>
+    </div>
+
     <form method="post" action="{% url 'accounts:logout' %}">
         {% csrf_token %}
-        <button type="submit">Log out</button>
+        <button class="logout" type="submit">تسجيل الخروج</button>
     </form>
+</header>
+
+<main>
+    <section class="panel">
+        <h2>احجز رحلتك</h2>
+
+        <p class="welcome">
+            أهلًا {{ request.user.first_name|default:request.user.username }}،
+            حدد مكانك ووجهتك على الخريطة.
+        </p>
+
+        <form id="booking-form">
+            {% csrf_token %}
+
+            <label for="pickup_address">عنوان الانطلاق</label>
+            <input id="pickup_address" name="pickup_address"
+                   maxlength="255" required
+                   placeholder="مثال: شارع الجيش، السويس">
+
+            <div id="pickup-coords" class="coordinates">
+                لم يتم تحديد الموقع بعد
+            </div>
+
+            <label for="destination_address">عنوان الوصول</label>
+            <input id="destination_address" name="destination_address"
+                   maxlength="255" required
+                   placeholder="مثال: بورتوفيق، السويس">
+
+            <div id="destination-coords" class="coordinates">
+                لم يتم تحديد الموقع بعد
+            </div>
+
+            <label for="payment_method">طريقة الدفع</label>
+            <select id="payment_method" name="payment_method">
+                <option value="CASH">نقدًا للكابتن</option>
+                <option value="ONLINE">دفع إلكتروني</option>
+            </select>
+
+            <button id="submit-button" class="primary" type="submit">
+                طلب الرحلة
+            </button>
+        </form>
+
+        <div id="message" role="status" aria-live="polite"></div>
+    </section>
+
+    <section class="panel">
+        <h2>حدد المواقع على الخريطة</h2>
+
+        <p class="map-help">
+            اختر النقطة التي تريد تحديدها، ثم اضغط على مكانها في الخريطة.
+            اكتب العنوان في الحقل المقابل يدويًا.
+        </p>
+
+        <div class="target-buttons">
+            <button type="button" id="pickup-target" class="active">
+                📍 نقطة الانطلاق
+            </button>
+            <button type="button" id="destination-target">
+                🏁 الوجهة
+            </button>
+        </div>
+
+        <div id="map" aria-label="خريطة تحديد مواقع الرحلة"></div>
+    </section>
+</main>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+(() => {
+    const form = document.getElementById("booking-form");
+    const message = document.getElementById("message");
+    const submitButton = document.getElementById("submit-button");
+
+    const locations = {
+        pickup: null,
+        destination: null
+    };
+
+    let activeTarget = "pickup";
+
+    const map = L.map("map").setView([29.9668, 32.5498], 13);
+
+    L.tileLayer("https://a.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap contributors, HOT'
+}).addTo(map);
+
+    const markers = {
+        pickup: null,
+        destination: null
+    };
+
+    function selectTarget(target) {
+        activeTarget = target;
+
+        document.getElementById("pickup-target")
+            .classList.toggle("active", target === "pickup");
+
+        document.getElementById("destination-target")
+            .classList.toggle("active", target === "destination");
+    }
+
+    document.getElementById("pickup-target").addEventListener(
+        "click", () => selectTarget("pickup")
+    );
+
+    document.getElementById("destination-target").addEventListener(
+        "click", () => selectTarget("destination")
+    );
+
+    map.on("click", event => {
+        const target = activeTarget;
+        const lat = event.latlng.lat;
+        const lng = event.latlng.lng;
+
+        locations[target] = { latitude: lat, longitude: lng };
+
+        if (markers[target]) {
+            markers[target].setLatLng(event.latlng);
+        } else {
+            markers[target] = L.marker(event.latlng).addTo(map);
+        }
+
+        markers[target].bindPopup(
+            target === "pickup" ? "نقطة الانطلاق" : "الوجهة"
+        );
+
+        document.getElementById(`${target}-coords`).textContent =
+            `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+
+        hideMessage();
+
+        if (target === "pickup") {
+            selectTarget("destination");
+        }
+    });
+
+    function showMessage(text, type) {
+        message.textContent = text;
+        message.className = type;
+    }
+
+    function hideMessage() {
+        message.textContent = "";
+        message.className = "";
+    }
+
+    function getErrorText(data) {
+        if (typeof data === "string") return data;
+
+        if (data && typeof data === "object") {
+            return Object.entries(data)
+                .map(([key, value]) => {
+                    const details = Array.isArray(value)
+                        ? value.join("، ")
+                        : typeof value === "object"
+                            ? JSON.stringify(value)
+                            : String(value);
+
+                    return `${key}: ${details}`;
+                })
+                .join(" | ");
+        }
+
+        return "تعذر إتمام الطلب. حاول مرة أخرى.";
+    }
+
+    form.addEventListener("submit", async event => {
+        event.preventDefault();
+        hideMessage();
+
+        if (!locations.pickup || !locations.destination) {
+            showMessage(
+                "حدد نقطة الانطلاق والوجهة على الخريطة أولًا.",
+                "error"
+            );
+            return;
+        }
+
+        const pickupAddress =
+            document.getElementById("pickup_address").value.trim();
+
+        const destinationAddress =
+            document.getElementById("destination_address").value.trim();
+
+        if (!pickupAddress || !destinationAddress) {
+            showMessage("اكتب عنوان الانطلاق وعنوان الوصول.", "error");
+            return;
+        }
+
+        if (
+            locations.pickup.latitude === locations.destination.latitude &&
+            locations.pickup.longitude === locations.destination.longitude
+        ) {
+            showMessage("اختر نقطتين مختلفتين للرحلة.", "error");
+            return;
+        }
+
+        const csrfToken = form.querySelector(
+            'input[name="csrfmiddlewaretoken"]'
+        ).value;
+
+        const payload = {
+            pickup_address: pickupAddress,
+            pickup_latitude: locations.pickup.latitude.toFixed(6),
+            pickup_longitude: locations.pickup.longitude.toFixed(6),
+            destination_address: destinationAddress,
+            destination_latitude: locations.destination.latitude.toFixed(6),
+            destination_longitude: locations.destination.longitude.toFixed(6),
+            payment_method: document.getElementById("payment_method").value
+        };
+
+        submitButton.disabled = true;
+        submitButton.textContent = "جارٍ إرسال الطلب...";
+
+        try {
+            const response = await fetch("/api/trips/create/", {
+                method: "POST",
+                credentials: "same-origin",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                    "X-CSRFToken": csrfToken
+                },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await response.json().catch(() => ({}));
+
+            if (!response.ok) {
+                if (response.status === 403) {
+                    throw new Error(
+                        "تم رفض الطلب. تأكد من تسجيل الدخول وصلاحية حساب العميل، ثم حاول مجددًا."
+                    );
+                }
+
+                throw new Error(getErrorText(data));
+            }
+
+            const fare = data.estimated_fare;
+            const tripId = data.id;
+
+            let result = `تم إنشاء طلب الرحلة بنجاح. رقم الرحلة: ${tripId}.`;
+
+            if (fare !== undefined && fare !== null) {
+                result += ` السعر التقديري: ${fare} جنيه.`;
+            }
+
+            result += " السعر النهائي قد يعتمد على الاتفاق المعتمد داخل النظام.";
+
+            showMessage(result, "success");
+        } catch (error) {
+            showMessage(
+                error.message || "تعذر الاتصال بالخادم. تحقق من الإنترنت وحاول مجددًا.",
+                "error"
+            );
+        } finally {
+            submitButton.disabled = false;
+            submitButton.textContent = "طلب الرحلة";
+        }
+    });
+
+    setTimeout(() => map.invalidateSize(), 100);
+})();
+</script>
+
 </body>
 </html>

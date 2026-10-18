@@ -13,7 +13,6 @@ from trips.models import (
 
 CENT = Decimal("0.01")
 
-
 def _normalize_amount(amount):
     try:
         amount = Decimal(str(amount))
@@ -23,15 +22,20 @@ def _normalize_amount(amount):
     if not amount.is_finite() or amount <= 0:
         raise ValidationError("Amount must be greater than zero.")
 
-    amount = amount.quantize(CENT, rounding=ROUND_HALF_UP)
+    try:
+        amount = amount.quantize(CENT, rounding=ROUND_HALF_UP)
+    except ArithmeticError:
+        raise ValidationError("Amount exceeds the allowed maximum.")
 
     if amount <= 0:
         raise ValidationError(
             "Amount must be at least 0.01 EGP."
         )
 
-    return amount
+    if amount > Decimal("99999999.99"):
+        raise ValidationError("Amount exceeds the allowed maximum.")
 
+    return amount
 
 @transaction.atomic
 def credit_wallet(*, captain, amount, reference, description=""):
@@ -128,14 +132,21 @@ def deduct_trip_commission(*, trip_financial_record_id):
     reserve_reference = f"trip-commission-reserve:{trip.pk}"
     release_reference = f"trip-commission-release:{trip.pk}"
 
+
     reservation = FinancialTransaction.objects.filter(
-        reference=reserve_reference,
-        wallet=wallet,
-        captain=trip.captain,
-        transaction_type=(
-            FinancialTransaction.TransactionType.COMMISSION_RESERVE
-        ),
+        reference=reserve_reference
     ).first()
+
+    if reservation and (
+        reservation.wallet_id != wallet.pk
+        or reservation.captain_id != trip.captain_id
+        or reservation.transaction_type
+        != FinancialTransaction.TransactionType.COMMISSION_RESERVE
+    ):
+        raise ValidationError(
+            "The commission reservation is inconsistent."
+        )
+
 
     released = FinancialTransaction.objects.filter(
         reference=release_reference
@@ -173,6 +184,59 @@ def deduct_trip_commission(*, trip_financial_record_id):
             raise ValidationError(
                 "The commission transaction is inconsistent."
             )
+        return wallet
+
+    if record.commission_amount == Decimal("0.00"):
+        if reservation:
+            if reservation.amount <= Decimal("0.00"):
+                raise ValidationError(
+                    "The commission reservation is inconsistent."
+                )
+
+            release_reference = (
+                f"trip-commission-release-zero:{trip.pk}"
+            )
+            existing_release = FinancialTransaction.objects.filter(
+                reference=release_reference
+            ).first()
+
+            if existing_release:
+                if (
+                    existing_release.wallet_id != wallet.pk
+                    or existing_release.captain_id != trip.captain_id
+                    or existing_release.transaction_type
+                    != FinancialTransaction.TransactionType.COMMISSION_RELEASE
+                    or existing_release.amount != reservation.amount
+                ):
+                    raise ValidationError(
+                        "The zero-commission release is inconsistent."
+                    )
+            else:
+                if wallet.reserved_balance < reservation.amount:
+                    raise ValidationError("Reserved balance is inconsistent.")
+
+                wallet.reserved_balance -= reservation.amount
+                wallet.save(
+                    update_fields=["reserved_balance", "updated_at"]
+                )
+
+                FinancialTransaction.objects.create(
+                    captain=trip.captain,
+                    wallet=wallet,
+                    transaction_type=(
+                        FinancialTransaction.TransactionType.COMMISSION_RELEASE
+                    ),
+                    amount=reservation.amount,
+                    reference=release_reference,
+                    description=(
+                        f"Zero-commission reservation released for trip #{trip.pk}"
+                    ),
+                )
+
+        record.commission_status = (
+            TripFinancialRecord.CommissionStatus.COLLECTED
+        )
+        record.save(update_fields=["commission_status"])
         return wallet
 
     reserved_amount = (
@@ -264,15 +328,15 @@ def reserve_trip_commission(*, trip_id):
     if trip.estimated_fare is None or trip.estimated_fare <= 0:
         raise ValidationError("The trip must have a valid estimated fare.")
 
-    config = CommissionConfig.objects.filter(
-        is_active=True
-    ).order_by("id").first()
-
-    if config is None:
-        raise ValidationError("No active commission configuration exists.")
+    if trip.commission_percentage is None:
+        raise ValidationError(
+            "The trip commission percentage has not been set."
+        )
 
     commission = (
-        trip.estimated_fare * config.percentage / Decimal("100")
+        trip.estimated_fare
+        * trip.commission_percentage
+        / Decimal("100")
     ).quantize(CENT, rounding=ROUND_HALF_UP)
 
     wallet = CaptainWallet.objects.select_for_update().filter(
@@ -281,6 +345,9 @@ def reserve_trip_commission(*, trip_id):
 
     if wallet is None:
         raise ValidationError("The captain wallet does not exist.")
+
+    if commission == Decimal("0.00"):
+        return wallet
 
     reference = f"trip-commission-reserve:{trip.pk}"
     release_reference = f"trip-commission-release:{trip.pk}"
@@ -368,12 +435,21 @@ def release_trip_commission_reservation(*, trip_id):
 
     reserve_reference = f"trip-commission-reserve:{trip.pk}"
 
+
     reservation = FinancialTransaction.objects.filter(
-        reference=reserve_reference,
-        wallet=wallet,
-        captain=trip.captain,
-        transaction_type=FinancialTransaction.TransactionType.COMMISSION_RESERVE,
+        reference=reserve_reference
     ).first()
+
+    if reservation and (
+        reservation.wallet_id != wallet.pk
+        or reservation.captain_id != trip.captain_id
+        or reservation.transaction_type
+        != FinancialTransaction.TransactionType.COMMISSION_RESERVE
+    ):
+        raise ValidationError(
+            "The commission reservation is inconsistent."
+        )
+
 
     existing = FinancialTransaction.objects.filter(
         reference=reference
