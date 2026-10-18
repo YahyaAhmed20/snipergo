@@ -111,16 +111,16 @@
                 }
             );
 
-            let data;
+        let data;
 
-try {
-    data = await response.json();
-} catch {
-    message.textContent =
-        "Unexpected response from the payment service.";
-    button.disabled = false;
-    return;
-}
+        try {
+            data = await response.json();
+        } catch {
+            message.textContent =
+                "Unexpected response from the payment service.";
+            button.disabled = false;
+            return;
+        }
 
             if (!response.ok) {
                 message.textContent =
