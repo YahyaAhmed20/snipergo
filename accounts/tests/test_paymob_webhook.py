@@ -808,3 +808,22 @@ class PaymobWebhookSecurityTests(TestCase):
             WalletTopUpRequest.Status.PENDING,
         )
         self.assertEqual(pending_topup.payment_transaction_id, "")
+
+
+
+
+class PaymobReturnPageTests(SimpleTestCase):
+    def test_return_page_renders_arabic_message(self):
+        response = self.client.get(
+            reverse("accounts:paymob_return"),
+            HTTP_HOST="localhost",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.charset, "utf-8")
+        self.assertContains(response, "نتيجة الدفع")
+        self.assertContains(response, "تمت العودة من صفحة الدفع")
+        self.assertContains(
+            response,
+            "سيتم تحديث رصيد المحفظة بعد تأكيد العملية.",
+        )
