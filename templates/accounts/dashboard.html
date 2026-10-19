@@ -171,6 +171,69 @@
             margin-top: 6px;
         }
 
+        .address-search {
+            position: relative;
+        }
+
+        .search-hint {
+            color: #667085;
+            font-size: 12px;
+            margin: 6px 0 0;
+            line-height: 1.6;
+        }
+
+        .search-results {
+            display: none;
+            position: relative;
+            z-index: 1200;
+            margin-top: 6px;
+            border: 1px solid #d0d5dd;
+            border-radius: 10px;
+            background: #fff;
+            box-shadow: 0 8px 24px #1018281a;
+            overflow: hidden;
+        }
+
+        .search-results.visible {
+            display: block;
+        }
+
+        .search-result {
+            display: block;
+            width: 100%;
+            padding: 11px 12px;
+            border-radius: 0;
+            background: #fff;
+            color: #182230;
+            text-align: right;
+            line-height: 1.6;
+            border-bottom: 1px solid #eaecf0;
+        }
+
+        .search-result:last-child {
+            border-bottom: 0;
+        }
+
+        .search-result:hover,
+        .search-result:focus {
+            background: #fffae6;
+            outline: 2px solid #facc15;
+            outline-offset: -2px;
+        }
+
+        .search-results-message {
+            padding: 10px 12px;
+            margin: 0;
+            color: #667085;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .target-buttons button.selecting {
+            outline: 2px solid #111827;
+            outline-offset: 2px;
+        }
+
         @media (max-width: 760px) {
             main { grid-template-columns: 1fr; }
             #map { height: 380px; }
@@ -248,18 +311,36 @@
             {% csrf_token %}
 
             <label for="pickup_address">عنوان الانطلاق</label>
-            <input id="pickup_address" name="pickup_address"
-                   maxlength="255" required
-                   placeholder="مثال: شارع الجيش، السويس">
+            <div class="address-search">
+                <input id="pickup_address" name="pickup_address"
+                       maxlength="255" required autocomplete="off"
+                       aria-describedby="pickup-search-hint pickup-coords"
+                       aria-controls="pickup-search-results"
+                       placeholder="ابحث عن شارع أو منطقة في السويس">
+                <div id="pickup-search-results" class="search-results"
+                     role="listbox" aria-label="اقتراحات عنوان الانطلاق"></div>
+            </div>
+            <p id="pickup-search-hint" class="search-hint">
+                اكتب 3 أحرف على الأقل واختر المكان من الاقتراحات، أو حدده على الخريطة.
+            </p>
 
             <div id="pickup-coords" class="coordinates">
                 لم يتم تحديد الموقع بعد
             </div>
 
             <label for="destination_address">عنوان الوصول</label>
-            <input id="destination_address" name="destination_address"
-                   maxlength="255" required
-                   placeholder="مثال: بورتوفيق، السويس">
+            <div class="address-search">
+                <input id="destination_address" name="destination_address"
+                       maxlength="255" required autocomplete="off"
+                       aria-describedby="destination-search-hint destination-coords"
+                       aria-controls="destination-search-results"
+                       placeholder="ابحث عن وجهتك، مثل بورتوفيق">
+                <div id="destination-search-results" class="search-results"
+                     role="listbox" aria-label="اقتراحات عنوان الوصول"></div>
+            </div>
+            <p id="destination-search-hint" class="search-hint">
+                اختر إحدى نتائج البحث لتحديد الإحداثيات تلقائيًا.
+            </p>
 
             <div id="destination-coords" class="coordinates">
                 لم يتم تحديد الموقع بعد
@@ -286,8 +367,8 @@
         <h2>حدد المواقع على الخريطة</h2>
 
         <p class="map-help">
-            اختر النقطة التي تريد تحديدها، ثم اضغط على مكانها في الخريطة.
-            اكتب العنوان في الحقل المقابل يدويًا.
+            ابحث عن العنوان واختر إحدى النتائج لتحديد الموقع تلقائيًا،
+            أو اختر نقطة الانطلاق/الوجهة ثم اضغط على المكان المناسب في الخريطة.
         </p>
 
         <div class="target-buttons">
@@ -334,45 +415,94 @@
 
     const map = L.map("map").setView([29.9668, 32.5498], 13);
 
-    L.tileLayer("https://a.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-    attribution: '&copy; OpenStreetMap contributors, HOT'
-}).addTo(map);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
 
     const markers = {
         pickup: null,
         destination: null
     };
 
-    function selectTarget(target) {
+    const addressInputs = {
+        pickup: document.getElementById("pickup_address"),
+        destination: document.getElementById("destination_address")
+    };
+
+    const searchResults = {
+        pickup: document.getElementById("pickup-search-results"),
+        destination: document.getElementById("destination-search-results")
+    };
+
+    const searchTimers = {
+        pickup: null,
+        destination: null
+    };
+
+    const searchControllers = {
+        pickup: null,
+        destination: null
+    };
+
+    const searchRequestIds = {
+        pickup: 0,
+        destination: 0
+    };
+
+    function selectTarget(target, focusMap = false) {
         activeTarget = target;
 
         document.getElementById("pickup-target")
             .classList.toggle("active", target === "pickup");
-
         document.getElementById("destination-target")
             .classList.toggle("active", target === "destination");
+
+        document.getElementById("pickup-target")
+            .classList.toggle("selecting", focusMap && target === "pickup");
+        document.getElementById("destination-target")
+            .classList.toggle("selecting", focusMap && target === "destination");
+
+        if (focusMap) {
+            document.getElementById("map").scrollIntoView({
+                behavior: "smooth",
+                block: "center"
+            });
+            window.setTimeout(() => map.invalidateSize(), 250);
+            showMessage(
+                target === "pickup"
+                    ? "اضغط على الخريطة لتحديد نقطة الانطلاق."
+                    : "اضغط على الخريطة لتحديد الوجهة.",
+                "success"
+            );
+        }
     }
 
     document.getElementById("pickup-target").addEventListener(
-        "click", () => selectTarget("pickup")
+        "click", () => selectTarget("pickup", true)
     );
 
     document.getElementById("destination-target").addEventListener(
-        "click", () => selectTarget("destination")
+        "click", () => selectTarget("destination", true)
     );
 
-    map.on("click", event => {
-        const target = activeTarget;
-        const lat = event.latlng.lat;
-        const lng = event.latlng.lng;
+    function setLocation(target, latitude, longitude, label, zoom = 16) {
+        const lat = Number(latitude);
+        const lng = Number(longitude);
+
+        if (!Number.isFinite(lat) || !Number.isFinite(lng) ||
+            lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+            showMessage("تعذر تحديد إحداثيات هذا المكان. اختر نتيجة أخرى.", "error");
+            return;
+        }
 
         locations[target] = { latitude: lat, longitude: lng };
+        const point = L.latLng(lat, lng);
 
         if (markers[target]) {
-            markers[target].setLatLng(event.latlng);
+            markers[target].setLatLng(point);
         } else {
-            markers[target] = L.marker(event.latlng).addTo(map);
+            markers[target] = L.marker(point).addTo(map);
         }
 
         markers[target].bindPopup(
@@ -382,12 +512,199 @@
         document.getElementById(`${target}-coords`).textContent =
             `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
 
+        if (label) {
+            addressInputs[target].value = label.slice(0, 255);
+        }
+
+        map.setView(point, Math.max(map.getZoom(), zoom));
+        markers[target].openPopup();
         hideMessage();
+        document.getElementById(`${target}-target`).classList.remove("selecting");
 
         if (target === "pickup") {
             selectTarget("destination");
+        } else {
+            selectTarget("destination");
         }
+    }
+
+    map.on("click", event => {
+        setLocation(
+            activeTarget,
+            event.latlng.lat,
+            event.latlng.lng,
+            addressInputs[activeTarget].value.trim(),
+            map.getZoom()
+        );
     });
+
+    function hideSearchResults(target) {
+        searchResults[target].replaceChildren();
+        searchResults[target].classList.remove("visible");
+    }
+
+    function showSearchMessage(target, text) {
+        const box = searchResults[target];
+        box.replaceChildren();
+        const paragraph = document.createElement("p");
+        paragraph.className = "search-results-message";
+        paragraph.textContent = text;
+        box.appendChild(paragraph);
+        box.classList.add("visible");
+    }
+
+    function renderSearchResults(target, features) {
+        const box = searchResults[target];
+        box.replaceChildren();
+
+        if (!features.length) {
+            showSearchMessage(target, "لم نعثر على نتائج. جرّب كتابة اسم شارع أو منطقة أوضح.");
+            return;
+        }
+
+        for (const feature of features) {
+            const coordinates = feature?.geometry?.coordinates;
+            if (!Array.isArray(coordinates) || coordinates.length < 2) continue;
+
+            const [longitude, latitude] = coordinates;
+            const properties = feature.properties || {};
+            const label = properties.name ||
+                [properties.street, properties.district, properties.city]
+                    .filter(Boolean).join("، ");
+
+            if (!label) continue;
+
+            const detail = [
+                properties.street,
+                properties.district,
+                properties.city,
+                properties.state
+            ].filter((value, index, values) => value && values.indexOf(value) === index && value !== label);
+
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "search-result";
+            button.setAttribute("role", "option");
+            button.textContent = detail.length
+                ? `${label} — ${detail.join("، ")}`
+                : label;
+
+            button.addEventListener("click", () => {
+                setLocation(target, latitude, longitude, label, 16);
+                hideSearchResults(target);
+            });
+
+            box.appendChild(button);
+        }
+
+        if (!box.childElementCount) {
+            showSearchMessage(target, "لم نعثر على نتائج صالحة. جرّب عبارة بحث أخرى.");
+            return;
+        }
+
+        box.classList.add("visible");
+    }
+
+    async function searchAddress(target, query) {
+        const requestId = ++searchRequestIds[target];
+
+        if (searchControllers[target]) {
+            searchControllers[target].abort();
+        }
+
+        const controller = new AbortController();
+        searchControllers[target] = controller;
+
+        showSearchMessage(target, "جارٍ البحث عن الأماكن...");
+
+        try {
+            // Photon provides place-name search without requiring an API key.
+            // Search is debounced below to avoid sending a request on every keystroke.
+            const params = new URLSearchParams({
+                q: `${query}, السويس، مصر`,
+                lat: "29.9668",
+                lon: "32.5498",
+                limit: "6",
+                lang: "ar"
+            });
+
+            const response = await fetch(
+                `https://photon.komoot.io/api/?${params.toString()}`,
+                {
+                    method: "GET",
+                    mode: "cors",
+                    headers: { "Accept": "application/json" },
+                    signal: controller.signal
+                }
+            );
+
+            if (!response.ok) {
+                throw new Error("تعذر الاتصال بخدمة البحث.");
+            }
+
+            const data = await response.json();
+
+            if (requestId !== searchRequestIds[target]) return;
+
+            renderSearchResults(target, Array.isArray(data.features) ? data.features : []);
+        } catch (error) {
+            if (error.name === "AbortError" || requestId !== searchRequestIds[target]) {
+                return;
+            }
+            showSearchMessage(
+                target,
+                "تعذر البحث الآن. يمكنك تحديد الموقع مباشرةً على الخريطة."
+            );
+        }
+    }
+
+    for (const target of ["pickup", "destination"]) {
+        addressInputs[target].addEventListener("input", () => {
+            // Editing a selected address invalidates the old coordinates until a new
+            // result is selected or the location is selected on the map again.
+            locations[target] = null;
+            document.getElementById(`${target}-coords`).textContent =
+                "اختر مكانًا من نتائج البحث أو حدده على الخريطة";
+            if (markers[target]) {
+                map.removeLayer(markers[target]);
+                markers[target] = null;
+            }
+
+            if (searchTimers[target]) {
+                clearTimeout(searchTimers[target]);
+            }
+
+            const query = addressInputs[target].value.trim();
+            if (query.length < 3) {
+                hideSearchResults(target);
+                return;
+            }
+
+            searchTimers[target] = setTimeout(
+                () => searchAddress(target, query),
+                700
+            );
+        });
+
+        addressInputs[target].addEventListener("focus", () => {
+            if (searchResults[target].childElementCount) {
+                searchResults[target].classList.add("visible");
+            }
+        });
+
+        addressInputs[target].addEventListener("keydown", event => {
+            if (event.key === "Escape") {
+                hideSearchResults(target);
+            }
+        });
+
+        document.addEventListener("click", event => {
+            if (!event.target.closest(`#${target}-search-results`) &&
+                event.target !== addressInputs[target]) {
+                hideSearchResults(target);
+            }
+        });
+    }
 
     function showMessage(text, type) {
         message.textContent = text;
