@@ -732,9 +732,6 @@ class CaptainWalletTests(TestCase):
                     balance=Decimal("-1.00")
                 )
 
-
-
-
 class CaptainLocationUpdateAPITests(TestCase):
     def setUp(self):
         self.client = Client()
@@ -840,3 +837,28 @@ class CaptainLocationUpdateAPITests(TestCase):
         )
 
         self.assertIn(response.status_code, (401, 403))
+
+class CaptainDashboardWalletTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="dashboard_wallet_captain",
+            password="TestPassword123!",
+            role=User.Role.CAPTAIN,
+        )
+        self.captain = CaptainProfile.objects.create(
+            user=self.user,
+        )
+        self.wallet = CaptainWallet.objects.create(
+            captain=self.captain,
+            balance=Decimal("100.00"),
+            reserved_balance=Decimal("25.00"),
+        )
+        self.client.force_login(self.user)
+
+    def test_dashboard_displays_wallet_balances(self):
+        response = self.client.get("/accounts/dashboard/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "100.00")
+        self.assertContains(response, "25.00")
+        self.assertContains(response, "75.00")

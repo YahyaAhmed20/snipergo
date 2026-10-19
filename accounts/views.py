@@ -16,7 +16,7 @@ from .forms import (
     CaptainRegistrationForm,
     CaptainDocumentForm,
 )
-from .models import User, CaptainProfile, CaptainDocument
+from .models import User, CaptainProfile, CaptainDocument, CaptainWallet
 from .services.reviews import set_captain_online_status
 
 
@@ -68,7 +68,6 @@ login_view = auth_views.LoginView.as_view(
 
 logout_view = auth_views.LogoutView.as_view()
 
-
 @login_required
 def dashboard(request):
     user = request.user
@@ -88,17 +87,23 @@ def dashboard(request):
                 {"message": "Captain profile not found."},
             )
 
+        wallet = CaptainWallet.objects.filter(
+            captain=captain
+        ).first()
+
         return render(
             request,
             "accounts/pending.html",
-            {"captain": captain},
+            {
+                "captain": captain,
+                "wallet": wallet,
+            },
         )
 
     if user.role == User.Role.CUSTOMER:
         return render(request, "accounts/dashboard.html")
 
     return redirect("accounts:login")
-
 
 @login_required
 @require_POST
@@ -230,8 +235,6 @@ def captain_documents(request):
             "captain": captain,
         },
     )
-
-
 
 @login_required
 @require_http_methods(["GET", "POST"])

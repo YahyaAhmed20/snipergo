@@ -19,6 +19,27 @@
         <p>Approval status: {{ captain.get_approval_status_display }}</p>
         <p>Operational status: {{ captain.get_operational_status_display }}</p>
 
+        <section class="wallet-summary">
+            <h2>Wallet Balance</h2>
+
+            {% if wallet %}
+                <p>
+                    Current balance:
+                    <strong>{{ wallet.balance|floatformat:2 }} EGP</strong>
+                </p>
+                <p>
+                    Reserved balance:
+                    <strong>{{ wallet.reserved_balance|floatformat:2 }} EGP</strong>
+                </p>
+                <p>
+                    Available balance:
+                    <strong>{{ wallet.available_balance|floatformat:2 }} EGP</strong>
+                </p>
+            {% else %}
+                <p>Wallet is not set up yet.</p>
+            {% endif %}
+        </section>
+
         {% if captain.approval_status == "APPROVED" %}
             <form method="post" action="{% url 'accounts:set_operational_status' %}">
                 {% csrf_token %}

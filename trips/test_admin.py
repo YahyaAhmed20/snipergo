@@ -5,6 +5,8 @@ from django.db import IntegrityError, transaction
 from accounts.models import User
 from trips.admin import CommissionConfigAdmin
 from trips.models import CommissionConfig
+from trips.admin import FinancialTransactionAdmin
+from trips.models import FinancialTransaction
 
 
 class CommissionConfigAdminTests(TestCase):
@@ -97,3 +99,47 @@ class CommissionConfigAdminTests(TestCase):
             CommissionConfig.objects.filter(is_active=True).count(),
             1,
         )
+
+class FinancialTransactionAdminTests(TestCase):
+    def setUp(self):
+        self.model_admin = FinancialTransactionAdmin(
+            FinancialTransaction,
+            admin.site,
+        )
+
+    def test_financial_transaction_is_registered(self):
+        self.assertTrue(
+            admin.site.is_registered(FinancialTransaction)
+        )
+        self.assertIsInstance(
+            admin.site._registry[FinancialTransaction],
+            FinancialTransactionAdmin,
+        )
+
+    def test_adding_financial_transactions_is_disabled(self):
+        self.assertFalse(
+            self.model_admin.has_add_permission(None)
+        )
+
+    def test_deleting_financial_transactions_is_disabled(self):
+        self.assertFalse(
+            self.model_admin.has_delete_permission(None)
+        )
+
+    def test_all_financial_transaction_fields_are_read_only(self):
+        expected_fields = {
+            "captain",
+            "wallet",
+            "financial_record",
+            "transaction_type",
+            "amount",
+            "reference",
+            "description",
+            "created_at",
+        }
+
+        actual_fields = set(
+            self.model_admin.get_readonly_fields(None)
+        )
+
+        self.assertEqual(actual_fields, expected_fields)

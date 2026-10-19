@@ -1,9 +1,9 @@
-
 from django import forms
 from django.contrib import admin
 
 from .models import (
     CommissionConfig,
+    FinancialTransaction,
     TripFinancialRecord,
     TripPricingConfig,
 )
@@ -92,3 +92,41 @@ class TripFinancialRecordAdmin(admin.ModelAdmin):
         "captain_earnings",
         "created_at",
     )
+
+
+@admin.register(FinancialTransaction)
+class FinancialTransactionAdmin(admin.ModelAdmin):
+    list_display = (
+        "captain",
+        "transaction_type",
+        "amount",
+        "reference",
+        "created_at",
+    )
+    list_filter = (
+        "transaction_type",
+        "created_at",
+    )
+    search_fields = (
+        "captain__user__username",
+        "reference",
+        "description",
+    )
+    ordering = ("-created_at",)
+
+    readonly_fields = (
+        "captain",
+        "wallet",
+        "financial_record",
+        "transaction_type",
+        "amount",
+        "reference",
+        "description",
+        "created_at",
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
