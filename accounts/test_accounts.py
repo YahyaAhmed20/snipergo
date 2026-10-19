@@ -600,6 +600,87 @@ class CaptainDocumentUploadTests(TestCase):
             CaptainDocument.objects.filter(captain=self.captain).exists()
         )
 
+
+    def test_empty_file_is_rejected(self):
+        response = self.client.post(
+            self.url,
+            {
+                "document_type": CaptainDocument.DocumentType.NATIONAL_ID,
+                "file": self.make_upload("empty.jpg", b""),
+                "expires_at": "",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(
+            CaptainDocument.objects.filter(captain=self.captain).exists()
+        )
+        self.assertContains(response, "The submitted file is empty.")
+
+    def test_corrupted_image_is_rejected(self):
+        response = self.client.post(
+            self.url,
+            {
+                "document_type": CaptainDocument.DocumentType.NATIONAL_ID,
+                "file": self.make_upload("corrupted.jpg", b"not an image"),
+                "expires_at": "",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(
+            CaptainDocument.objects.filter(captain=self.captain).exists()
+        )
+        self.assertContains(
+            response,
+            "The uploaded image is invalid or corrupted.",
+        )
+
+    def test_image_content_must_match_extension(self):
+        png_image = Image.new("RGB", (20, 20), color="white")
+        buffer = BytesIO()
+        png_image.save(buffer, format="PNG")
+
+        response = self.client.post(
+            self.url,
+            {
+                "document_type": CaptainDocument.DocumentType.NATIONAL_ID,
+                "file": self.make_upload("identity.jpg", buffer.getvalue()),
+                "expires_at": "",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(
+            CaptainDocument.objects.filter(captain=self.captain).exists()
+        )
+        self.assertContains(
+            response,
+            "The file content does not match its extension.",
+        )
+
+    def test_invalid_pdf_is_rejected(self):
+        response = self.client.post(
+            self.url,
+            {
+                "document_type": CaptainDocument.DocumentType.NATIONAL_ID,
+                "file": self.make_upload(
+                    "document.pdf",
+                    b"%PDF-1.4\ninvalid content\n",
+                ),
+                "expires_at": "",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(
+            CaptainDocument.objects.filter(captain=self.captain).exists()
+        )
+        self.assertContains(
+            response,
+            "The uploaded file is not a valid PDF document.",
+        )
+
     def test_customer_cannot_upload_captain_documents(self):
         customer = User.objects.create_user(
             username="upload_customer",

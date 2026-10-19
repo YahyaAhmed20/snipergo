@@ -1,6 +1,7 @@
 
 from decimal import Decimal
 import json
+from unittest.mock import patch
 
 from django.urls import reverse
 from django.test import TestCase, SimpleTestCase, override_settings
@@ -198,6 +199,108 @@ class PaymobWebhookSecurityTests(TestCase):
 
 
 
+
+    @patch("accounts.paymob_views.credit_wallet")
+    def test_wallet_credit_failure_does_not_complete_topup(self, mock_credit):
+        import hashlib
+        import hmac
+
+        from django.contrib.auth import get_user_model
+        from accounts.models import (
+            CaptainProfile,
+            CaptainWallet,
+            WalletTopUpRequest,
+        )
+        from accounts.services.paymob import (
+            HMAC_CALLBACK_FIELDS,
+            _nested_value,
+        )
+        from trips.models import FinancialTransaction
+
+        user = get_user_model().objects.create_user(
+            username="paymob_credit_failure",
+            password="local-test-password",
+            role="CAPTAIN",
+        )
+        captain = CaptainProfile.objects.create(
+            user=user,
+            phone_number="+201000000010",
+        )
+        wallet = CaptainWallet.objects.create(
+            captain=captain,
+            balance=Decimal("0.00"),
+        )
+        topup = WalletTopUpRequest.objects.create(
+            captain=captain,
+            amount=Decimal("100.00"),
+            method=WalletTopUpRequest.Method.PAYMOB,
+            status=WalletTopUpRequest.Status.PENDING,
+            reference="PAYMOB-CREDIT-FAILURE",
+            payment_order_id="987699",
+        )
+
+        payload = {
+            "type": "TRANSACTION",
+            "obj": {
+                "amount_cents": 10000,
+                "created_at": "2026-01-01T12:00:00",
+                "currency": "EGP",
+                "error_occured": False,
+                "has_parent_transaction": False,
+                "id": 123499,
+                "integration_id": 5489313,
+                "is_3d_secure": True,
+                "is_auth": False,
+                "is_capture": False,
+                "is_refunded": False,
+                "is_standalone_payment": True,
+                "is_voided": False,
+                "order": {"id": 987699},
+                "owner": 123,
+                "pending": False,
+                "source_data": {
+                    "pan": "2346",
+                    "sub_type": "MasterCard",
+                    "type": "card",
+                },
+                "success": True,
+            },
+        }
+
+        message = "".join(
+            _nested_value(payload, key)
+            for key in HMAC_CALLBACK_FIELDS
+        )
+        signature = hmac.new(
+            b"local-test-secret",
+            message.encode("utf-8"),
+            hashlib.sha512,
+        ).hexdigest()
+
+        mock_credit.side_effect = RuntimeError("Simulated wallet failure")
+
+
+        with self.assertRaises(RuntimeError):
+            self.client.post(
+                reverse("accounts:paymob_transaction_webhook")
+                + f"?hmac={signature}",
+                data=json.dumps(payload),
+                content_type="application/json",
+            )
+
+
+        wallet.refresh_from_db()
+        topup.refresh_from_db()
+
+
+        self.assertEqual(wallet.balance, Decimal("0.00"))
+        self.assertEqual(topup.status, WalletTopUpRequest.Status.PENDING)
+        self.assertEqual(topup.payment_transaction_id, "")
+        self.assertFalse(
+            FinancialTransaction.objects.filter(
+                reference=f"wallet-topup:{topup.reference}"
+            ).exists()
+        )
 
     def test_rejects_invalid_amount_cents_types(self):
         import hashlib
