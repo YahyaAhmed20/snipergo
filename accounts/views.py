@@ -1,4 +1,7 @@
 from datetime import date
+from django.conf import settings as django_settings
+
+
 from .forms import CashWalletTopUpForm
 from .models import WalletTopUpRequest
 from django.utils.crypto import get_random_string
@@ -101,7 +104,11 @@ def dashboard(request):
         )
 
     if user.role == User.Role.CUSTOMER:
-        return render(request, "accounts/dashboard.html")
+        return render(
+            request,
+            "accounts/dashboard.html",
+            {"carto_api_key": django_settings.CARTO_API_KEY},
+        )
 
     return redirect("accounts:login")
 
