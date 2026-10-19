@@ -220,3 +220,4 @@ PAYMOB_CURRENCY = os.environ.get("PAYMOB_CURRENCY", "EGP")
 PAYMOB_HMAC_SECRET = os.environ.get("PAYMOB_HMAC_SECRET", "")
 PAYMOB_NOTIFICATION_URL = os.environ.get("PAYMOB_NOTIFICATION_URL", "")
 PAYMOB_REDIRECTION_URL = os.environ.get("PAYMOB_REDIRECTION_URL", "")
+SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
