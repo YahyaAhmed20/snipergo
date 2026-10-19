@@ -943,3 +943,33 @@ class CaptainDashboardWalletTests(TestCase):
         self.assertContains(response, "100.00")
         self.assertContains(response, "25.00")
         self.assertContains(response, "75.00")
+
+class CustomerDashboardTripTrackingTests(TestCase):
+    def test_customer_dashboard_contains_trip_tracking_controls(self):
+        customer = User.objects.create_user(
+            username="customer_trip_tracking_dashboard",
+            password="TestPassword123!",
+            role=User.Role.CUSTOMER,
+        )
+        self.client.force_login(customer)
+
+        response = self.client.get(reverse("accounts:dashboard"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(
+            response,
+            "accounts/dashboard.html",
+        )
+
+        for element_id in (
+            "trip-tracking",
+            "tracked-trip-id",
+            "trip-status",
+            "trip-details",
+            "trip-offers",
+            "tracking-message",
+            "refresh-trip",
+            "cancel-trip",
+        ):
+            with self.subTest(element_id=element_id):
+                self.assertContains(response, f'id="{element_id}"')

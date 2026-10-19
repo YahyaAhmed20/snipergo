@@ -178,6 +178,47 @@
             header h1 { font-size: 19px; }
             .panel { padding: 17px; }
         }
+
+        #trip-tracking {
+            display: none;
+            margin-top: 22px;
+            padding-top: 18px;
+            border-top: 1px solid #e4e7ec;
+        }
+
+        #trip-tracking.visible { display: block; }
+
+        .tracking-status {
+            padding: 12px;
+            margin: 12px 0;
+            border-radius: 9px;
+            background: #f2f4f7;
+            line-height: 1.8;
+        }
+
+        #trip-offers {
+            display: grid;
+            gap: 10px;
+            margin-top: 12px;
+        }
+
+        .trip-offer {
+            padding: 14px;
+            border: 1px solid #d0d5dd;
+            border-radius: 10px;
+        }
+
+        .trip-offer button {
+            margin-top: 10px;
+            background: #facc15;
+            color: #111827;
+            font-weight: bold;
+        }
+
+        #tracking-message {
+            line-height: 1.8;
+            overflow-wrap: anywhere;
+        }
     </style>
 </head>
 <body>
@@ -236,6 +277,9 @@
         </form>
 
         <div id="message" role="status" aria-live="polite"></div>
+
+
+
     </section>
 
     <section class="panel">
@@ -258,6 +302,20 @@
         <div id="map" aria-label="خريطة تحديد مواقع الرحلة"></div>
     </section>
 </main>
+
+        <section id="trip-tracking" class="panel" aria-live="polite">
+            <h2>Trip Tracking</h2>
+            <p>Trip ID: <strong id="tracked-trip-id">-</strong></p>
+            <div id="trip-status" class="tracking-status">
+                No active trip selected.
+            </div>
+            <div id="trip-details"></div>
+            <h3>Captain Offers</h3>
+            <div id="trip-offers"></div>
+            <p id="tracking-message" role="status"></p>
+            <button type="button" id="refresh-trip">Refresh Status</button>
+            <button type="button" id="cancel-trip">Cancel Trip</button>
+        </section>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
@@ -361,6 +419,258 @@
         return "تعذر إتمام الطلب. حاول مرة أخرى.";
     }
 
+
+    let trackedTripId = null;
+    let trackingTimer = null;
+    let trackingRequestInProgress = false;
+
+    const trackingPanel = document.getElementById("trip-tracking");
+    const tripStatusElement = document.getElementById("trip-status");
+    const tripDetailsElement = document.getElementById("trip-details");
+    const tripOffersElement = document.getElementById("trip-offers");
+    const trackingMessageElement = document.getElementById("tracking-message");
+    const refreshTripButton = document.getElementById("refresh-trip");
+    const cancelTripButton = document.getElementById("cancel-trip");
+
+    const terminalTripStatuses = new Set([
+        "COMPLETED", "CANCELLED", "EXPIRED"
+    ]);
+
+    const tripStatusLabels = {
+        REQUESTED: "Waiting for captain offers",
+        ACCEPTED: "Captain accepted the trip",
+        ARRIVING: "Captain is on the way",
+        ARRIVED: "Captain has arrived",
+        IN_PROGRESS: "Trip in progress",
+        COMPLETED: "Trip completed",
+        CANCELLED: "Trip cancelled",
+        EXPIRED: "Trip expired"
+    };
+
+    function setTrackingMessage(message) {
+        trackingMessageElement.textContent = message || "";
+    }
+
+    async function trackingFetch(url, options = {}) {
+        const trackingCsrfToken = document.querySelector(
+            'input[name="csrfmiddlewaretoken"]'
+        )?.value;
+
+        const response = await fetch(url, {
+            credentials: "same-origin",
+            ...options,
+            headers: {
+                "Accept": "application/json",
+                ...(options.body ? {"Content-Type": "application/json"} : {}),
+                ...(trackingCsrfToken ? {"X-CSRFToken": trackingCsrfToken} : {}),
+                ...(options.headers || {})
+            }
+        });
+
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+            const detail = data.detail || data.error || "Request failed.";
+            throw new Error(
+                typeof detail === "string" ? detail : "Request failed."
+            );
+        }
+
+        return data;
+    }
+
+    function appendTripDetail(label, value) {
+        const row = document.createElement("p");
+        const strong = document.createElement("strong");
+        strong.textContent = label + ": ";
+        row.appendChild(strong);
+        row.appendChild(document.createTextNode(
+            value === null || value === undefined || value === ""
+                ? "-"
+                : String(value)
+        ));
+        tripDetailsElement.appendChild(row);
+    }
+
+    function stopTripTrackingIfTerminal(status) {
+        if (!terminalTripStatuses.has(status)) {
+            return;
+        }
+
+        if (trackingTimer !== null) {
+            clearInterval(trackingTimer);
+            trackingTimer = null;
+        }
+
+        cancelTripButton.hidden = true;
+    }
+
+    async function loadTripTracking() {
+        if (!trackedTripId || trackingRequestInProgress) {
+            return;
+        }
+
+        trackingRequestInProgress = true;
+
+        try {
+            const tripUrl = `/api/trips/${trackedTripId}/`;
+            const trip = await trackingFetch(tripUrl);
+
+            if (String(trip.id) !== String(trackedTripId)) {
+                throw new Error("Trip ID mismatch.");
+            }
+
+            document.getElementById("tracked-trip-id").textContent =
+                String(trip.id);
+
+            tripStatusElement.textContent =
+                `${tripStatusLabels[trip.status] || trip.status}`;
+
+            tripDetailsElement.replaceChildren();
+            appendTripDetail("Pickup", trip.pickup_address);
+            appendTripDetail("Destination", trip.destination_address);
+            appendTripDetail("Captain", trip.captain_username);
+            appendTripDetail("Estimated fare", trip.estimated_fare);
+            appendTripDetail("Agreed fare", trip.agreed_fare);
+            appendTripDetail("Final fare", trip.final_fare);
+
+            stopTripTrackingIfTerminal(trip.status);
+
+            const canCancel = ["REQUESTED", "ACCEPTED", "ARRIVING", "ARRIVED"].includes(trip.status);
+            cancelTripButton.hidden = !canCancel;
+
+            tripOffersElement.replaceChildren();
+
+            if (trip.status === "REQUESTED") {
+                const offers = await trackingFetch(
+                    `${tripUrl}offers/list/`
+                );
+
+                if (!Array.isArray(offers)) {
+                    throw new Error("Unexpected offers response format.");
+                }
+
+                for (const offer of offers) {
+                    if (offer.status !== "PENDING") {
+                        continue;
+                    }
+
+                    const card = document.createElement("article");
+                    card.className = "trip-offer";
+
+                    const captain = document.createElement("p");
+                    captain.textContent =
+                        `Captain: ${offer.captain_username}`;
+
+                    const amount = document.createElement("p");
+                    amount.textContent = `Offer: ${offer.amount} EGP`;
+
+                    const expiry = document.createElement("p");
+                    expiry.textContent = offer.expires_at
+                        ? `Expires: ${new Date(offer.expires_at).toLocaleString()}`
+                        : "";
+
+                    const acceptButton = document.createElement("button");
+                    acceptButton.type = "button";
+                    acceptButton.textContent = "Accept offer";
+
+                    acceptButton.addEventListener("click", async () => {
+                        acceptButton.disabled = true;
+                        setTrackingMessage("Accepting offer...");
+
+                        try {
+                            await trackingFetch(
+                                `${tripUrl}offers/${offer.id}/accept/`,
+                                {
+                                    method: "POST",
+                                    body: JSON.stringify({})
+                                }
+                            );
+
+                            setTrackingMessage("Offer accepted.");
+                            await loadTripTracking();
+                        } catch (error) {
+                            setTrackingMessage(error.message);
+                            acceptButton.disabled = false;
+                        }
+                    });
+
+                    card.append(captain, amount, expiry, acceptButton);
+                    tripOffersElement.appendChild(card);
+                }
+
+                if (!tripOffersElement.childElementCount) {
+                    const empty = document.createElement("p");
+                    empty.textContent = "No pending offers yet.";
+                    tripOffersElement.appendChild(empty);
+                }
+            }
+
+            if (terminalTripStatuses.has(trip.status)) {
+                tripOffersElement.replaceChildren();
+            }
+
+            setTrackingMessage("");
+        } catch (error) {
+            setTrackingMessage(
+                `Could not refresh trip status: ${error.message}`
+            );
+        } finally {
+            trackingRequestInProgress = false;
+        }
+    }
+
+    function startTripTracking(tripId) {
+        trackedTripId = String(tripId);
+        trackingPanel.classList.add("visible");
+        document.getElementById("tracked-trip-id").textContent =
+            trackedTripId;
+
+        if (trackingTimer !== null) {
+            clearInterval(trackingTimer);
+        }
+
+        loadTripTracking();
+        trackingTimer = setInterval(loadTripTracking, 10000);
+    }
+
+    refreshTripButton.addEventListener("click", loadTripTracking);
+
+    cancelTripButton.addEventListener("click", async () => {
+        if (!trackedTripId) {
+            return;
+        }
+
+        const reason = window.prompt("Enter a reason for cancelling the trip:");
+
+        if (reason === null) {
+            return;
+        }
+
+        if (!reason.trim()) {
+            setTrackingMessage("A cancellation reason is required.");
+            return;
+        }
+
+        cancelTripButton.disabled = true;
+        setTrackingMessage("Cancelling trip...");
+
+        try {
+            await trackingFetch(`/api/trips/${trackedTripId}/cancel/`, {
+                method: "POST",
+                body: JSON.stringify({reason: reason.trim()})
+            });
+
+            setTrackingMessage("Cancellation request completed.");
+            await loadTripTracking();
+        } catch (error) {
+            setTrackingMessage(error.message);
+        } finally {
+            cancelTripButton.disabled = false;
+        }
+    });
+
+
     form.addEventListener("submit", async event => {
         event.preventDefault();
         hideMessage();
@@ -445,6 +755,7 @@
             result += " السعر النهائي قد يعتمد على الاتفاق المعتمد داخل النظام.";
 
             showMessage(result, "success");
+            startTripTracking(tripId);
         } catch (error) {
             showMessage(
                 error.message || "تعذر الاتصال بالخادم. تحقق من الإنترنت وحاول مجددًا.",
