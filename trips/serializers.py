@@ -1,9 +1,8 @@
-from django.core.exceptions import ValidationError as DjangoValidationError
+﻿from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
-
 from accounts.models import CustomerProfile
 from trips.models import CaptainOffer, Trip
-from trips.services.distance import calculate_distance_km
+from trips.services.distance import calculate_road_distance_km
 from trips.services.pricing import calculate_estimated_fare
 
 
@@ -34,7 +33,7 @@ class TripCreateSerializer(serializers.ModelSerializer):
             )
 
         try:
-            distance_km = calculate_distance_km(
+            distance_km = calculate_road_distance_km(
                 pickup_latitude=validated_data["pickup_latitude"],
                 pickup_longitude=validated_data["pickup_longitude"],
                 destination_latitude=validated_data["destination_latitude"],

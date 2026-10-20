@@ -1,13 +1,13 @@
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.core.exceptions import ValidationError
 from django.test import TestCase
 
 from trips.models import TripPricingConfig
-from trips.services.distance import calculate_distance_km
+from trips.services.distance import calculate_distance_km, calculate_road_distance_km
 from trips.services.negotiation import calculate_negotiation_range
 from trips.services.pricing import calculate_estimated_fare
-
 
 class TripPricingTests(TestCase):
     def setUp(self):
@@ -126,4 +126,68 @@ class TripPricingTests(TestCase):
             calculate_negotiation_range(
                 city="Suez",
                 estimated_fare=Decimal("-10.00"),
+            )
+
+    @patch("trips.services.distance.requests.get")
+    def test_calculates_road_distance_from_osrm(self, mocked_get):
+        mocked_get.return_value.status_code = 200
+        mocked_get.return_value.json.return_value = {
+            "code": "Ok",
+            "routes": [{"distance": 2894.4}],
+        }
+
+        distance = calculate_road_distance_km(
+            pickup_latitude="29.9668",
+            pickup_longitude="32.5498",
+            destination_latitude="29.9700912",
+            destination_longitude="32.5309922",
+        )
+
+        self.assertEqual(distance, Decimal("2.8944"))
+        mocked_get.assert_called_once()
+        self.assertEqual(mocked_get.call_args.kwargs["timeout"], 10.0)
+
+    @patch(
+        "trips.services.distance.requests.get",
+        side_effect=__import__("requests").RequestException("Connection failed"),
+    )
+    def test_road_distance_fails_when_osrm_is_unavailable(self, mocked_get):
+        with self.assertRaises(ValidationError):
+            calculate_road_distance_km(
+                pickup_latitude="29.9668",
+                pickup_longitude="32.5498",
+                destination_latitude="29.9700912",
+                destination_longitude="32.5309922",
+            )
+
+    @patch("trips.services.distance.requests.get")
+    def test_road_distance_rejects_missing_route(self, mocked_get):
+        mocked_get.return_value.status_code = 200
+        mocked_get.return_value.json.return_value = {
+            "code": "NoRoute",
+            "routes": [],
+        }
+
+        with self.assertRaises(ValidationError):
+            calculate_road_distance_km(
+                pickup_latitude="29.9668",
+                pickup_longitude="32.5498",
+                destination_latitude="29.9700912",
+                destination_longitude="32.5309922",
+            )
+
+    @patch("trips.services.distance.requests.get")
+    def test_road_distance_rejects_malformed_route(self, mocked_get):
+        mocked_get.return_value.status_code = 200
+        mocked_get.return_value.json.return_value = {
+            "code": "Ok",
+            "routes": ["invalid-route"],
+        }
+
+        with self.assertRaises(ValidationError):
+            calculate_road_distance_km(
+                pickup_latitude="29.9668",
+                pickup_longitude="32.5498",
+                destination_latitude="29.9700912",
+                destination_longitude="32.5309922",
             )

@@ -814,7 +814,11 @@ class TripAPITests(TestCase):
         )
         self.assertEqual(response.status_code, 403)
 
-    def test_customer_can_create_trip(self):
+    @patch(
+        "trips.serializers.calculate_road_distance_km",
+        return_value=Decimal("2.8944"),
+    )
+    def test_customer_can_create_trip(self, mocked_road_distance):
         TripPricingConfig.objects.create(
             city="Suez",
             base_fare=Decimal("10.00"),
@@ -847,7 +851,16 @@ class TripAPITests(TestCase):
             msg=f"API response: {response.data}",
         )
 
+        mocked_road_distance.assert_called_once_with(
+            pickup_latitude=Decimal("29.9668"),
+            pickup_longitude=Decimal("32.5498"),
+            destination_latitude=Decimal("29.9500"),
+            destination_longitude=Decimal("32.5700"),
+        )
+
         created_trip = Trip.objects.get(pk=response.data["id"])
+
+        self.assertEqual(created_trip.estimated_fare, Decimal("24.47"))
 
         self.assertEqual(
             created_trip.estimated_fare,
@@ -866,6 +879,55 @@ class TripAPITests(TestCase):
             1,
         )
 
+
+
+
+
+    @patch(
+        "trips.serializers.calculate_road_distance_km",
+        side_effect=ValidationError(
+            "Road routing is temporarily unavailable. Please try again."
+        ),
+    )
+    def test_customer_cannot_create_trip_when_routing_fails(
+        self,
+        mocked_road_distance,
+    ):
+        TripPricingConfig.objects.create(
+            city="Suez",
+            base_fare=Decimal("10.00"),
+            price_per_km=Decimal("5.00"),
+            minimum_fare=Decimal("15.00"),
+            maximum_fare=Decimal("100.00"),
+            is_active=True,
+        )
+
+        self.api_client.force_authenticate(user=self.customer_user)
+
+        response = self.api_client.post(
+            "/api/trips/create/",
+            {
+                "pickup_address": "Suez",
+                "pickup_latitude": "29.9668",
+                "pickup_longitude": "32.5498",
+                "destination_address": "Port Tawfik",
+                "destination_latitude": "29.9500",
+                "destination_longitude": "32.5700",
+                "payment_method": "CASH",
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            400,
+            msg=f"API response: {response.data}",
+        )
+        mocked_road_distance.assert_called_once()
+        self.assertEqual(
+            Trip.objects.filter(customer=self.customer).count(),
+            0,
+        )
     def test_customer_cannot_view_another_customer_trip(self):
         other_user = User.objects.create_user(
             username="other_customer",

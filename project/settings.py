@@ -17,6 +17,17 @@ import dj_database_url
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 CARTO_API_KEY = os.environ.get("CARTO_API_KEY", "")
+OSRM_ROUTING_URL = os.environ.get(
+    "OSRM_ROUTING_URL",
+    "https://router.project-osrm.org",
+)
+
+try:
+    OSRM_REQUEST_TIMEOUT = float(os.environ.get("OSRM_REQUEST_TIMEOUT", "10"))
+    if OSRM_REQUEST_TIMEOUT <= 0:
+        raise ValueError
+except ValueError:
+    raise ValueError("OSRM_REQUEST_TIMEOUT must be a positive number.")
 
 
 # Quick-start development settings - unsuitable for production
