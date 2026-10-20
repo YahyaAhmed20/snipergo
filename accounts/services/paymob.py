@@ -18,8 +18,8 @@ PAYMOB_INTENTION_URL = "https://accept.paymob.com/v1/intention/"
 def _amount_to_cents(amount):
     amount = Decimal(str(amount))
 
-    if not amount.is_finite() or amount < Decimal("1.00"):
-        raise ValidationError("Minimum Paymob top-up is 1.00 EGP.")
+    if not amount.is_finite() or amount < Decimal("200.00"):
+        raise ValidationError("Minimum Paymob top-up is 200.00 EGP.")
 
     rounded = amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     return int(rounded * 100)

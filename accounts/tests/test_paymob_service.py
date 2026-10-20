@@ -46,10 +46,10 @@ class PaymobTopUpServiceTests(TestCase):
 
         topup, checkout_url = create_paymob_topup(
             captain=self.captain,
-            amount=Decimal("50.00"),
+            amount=Decimal("200.00"),
         )
 
-        self.assertEqual(topup.amount, Decimal("50.00"))
+        self.assertEqual(topup.amount, Decimal("200.00"))
         self.assertEqual(topup.method, WalletTopUpRequest.Method.PAYMOB)
         self.assertEqual(topup.status, WalletTopUpRequest.Status.PENDING)
         self.assertEqual(topup.payment_order_id, "order-123")
@@ -71,7 +71,7 @@ class PaymobTopUpServiceTests(TestCase):
         self.assertEqual(request_kwargs["timeout"], 20)
 
         payload = request_kwargs["json"]
-        self.assertEqual(payload["amount"], 5000)
+        self.assertEqual(payload["amount"], 20000)
         self.assertEqual(payload["currency"], "EGP")
         self.assertEqual(payload["payment_methods"], [5489313])
         self.assertEqual(
@@ -84,7 +84,7 @@ class PaymobTopUpServiceTests(TestCase):
         )
         self.assertEqual(
             payload["items"][0]["amount"],
-            5000,
+            20000,
         )
 
     @patch("accounts.services.paymob.requests.post")
@@ -98,7 +98,7 @@ class PaymobTopUpServiceTests(TestCase):
         with self.assertRaises(ValidationError):
             create_paymob_topup(
                 captain=self.captain,
-                amount=Decimal("50.00"),
+                amount=Decimal("200.00"),
             )
 
     @patch("accounts.services.paymob.requests.post")
@@ -110,7 +110,7 @@ class PaymobTopUpServiceTests(TestCase):
         with self.assertRaises(ValidationError):
             create_paymob_topup(
                 captain=self.captain,
-                amount=Decimal("50.00"),
+                amount=Decimal("200.00"),
             )
 
         self.assertFalse(
@@ -126,7 +126,7 @@ class PaymobTopUpServiceTests(TestCase):
         with self.assertRaises(ValidationError):
             create_paymob_topup(
                 captain=self.captain,
-                amount=Decimal("0.50"),
+                amount=Decimal("199.99"),
             )
 
         post.assert_not_called()
