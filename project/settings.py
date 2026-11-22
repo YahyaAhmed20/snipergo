@@ -315,11 +315,13 @@ SOCIALACCOUNT_ADAPTER = "accounts.adapters.SniperSocialAccountAdapter"
 
 
 
+
+
 SOCIALACCOUNT_PROVIDERS = {
     "google": {
         "APP": {
-            "client_id": "667352803940-fu5hbuhk4o1a1ojsjop5b3ttelc6b7a6.apps.googleusercontent.com",
-            "secret": "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",
+            "client_id": os.environ.get("GOOGLE_CLIENT_ID", ""),
+            "secret": os.environ.get("GOOGLE_CLIENT_SECRET", ""),
             "key": "",
         },
         "SCOPE": ["profile", "email"],
