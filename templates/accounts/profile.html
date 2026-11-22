@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+
+{% block title %}الملف الشخصي | SNIPER GO{% endblock %}
+
+{% block extra_head %}
+<style>
+        .profile-page {
+            max-width: 760px;
+            margin: 36px auto;
+            padding: 0 18px 40px;
+        }
+        .profile-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+        }
+        .profile-header h1 { margin: 0 0 8px; }
+        .profile-subtitle { color: #667085; margin: 0; }
+        .profile-card {
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 18px;
+            padding: 28px;
+            box-shadow: 0 8px 28px rgba(16,24,40,.06);
+        }
+        .profile-avatar {
+            width: 76px;
+            height: 76px;
+            border-radius: 50%;
+            display: grid;
+            place-items: center;
+            background: #111827;
+            color: #facc15;
+            font-size: 28px;
+            font-weight: 800;
+            margin-bottom: 20px;
+        }
+        .profile-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 18px;
+        }
+        .profile-field { display: flex; flex-direction: column; gap: 8px; }
+        .profile-field.full { grid-column: 1 / -1; }
+        .profile-field label { font-weight: 700; color: #344054; }
+        .profile-field input {
+            width: 100%;
+            box-sizing: border-box;
+            min-height: 46px;
+            padding: 10px 12px;
+            border: 1px solid #d0d5dd;
+            border-radius: 10px;
+            background: #fff;
+            color: #101828;
+            font: inherit;
+        }
+        .profile-field input:focus {
+            outline: 2px solid #facc15;
+            border-color: #d4a900;
+        }
+        .profile-actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 24px;
+            flex-wrap: wrap;
+        }
+        .profile-back {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 12px 18px;
+            border: 1px solid #d0d5dd;
+            border-radius: 10px;
+            text-decoration: none;
+            color: #344054;
+            font-weight: 700;
+        }
+        .profile-messages { margin-bottom: 18px; }
+        .profile-message {
+            padding: 12px 14px;
+            border-radius: 10px;
+            margin-bottom: 8px;
+            background: #f2f4f7;
+            color: #344054;
+        }
+        .profile-message.success { background: #ecfdf3; color: #027a48; }
+        .profile-message.error { background: #fef3f2; color: #b42318; }
+        .field-errors { color: #b42318; font-size: 13px; }
+        @media (max-width: 560px) {
+            .profile-page { margin-top: 22px; }
+            .profile-card { padding: 20px; }
+            .profile-grid { grid-template-columns: 1fr; }
+            .profile-field.full { grid-column: auto; }
+            .profile-header { align-items: flex-start; }
+        }
+        
+.profile-card {
+    background: #ffffff;
+    color: #182230;
+    border: 1px solid #d0d5dd;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
+}
+
+.profile-field label {
+    color: #182230;
+    font-size: 15px;
+}
+
+.profile-field input {
+    background: #ffffff !important;
+    color: #182230 !important;
+    border: 1px solid #98a2b3 !important;
+    min-height: 48px;
+    padding: 12px 14px;
+    border-radius: 12px;
+}
+
+.profile-field input::placeholder {
+    color: #667085;
+    opacity: 1;
+}
+
+.profile-field input:focus {
+    outline: 2px solid #facc15;
+    outline-offset: 1px;
+    border-color: #d4a900 !important;
+}
+
+.profile-actions .sg-button {
+    min-height: 46px;
+    padding: 12px 22px;
+    border: 0;
+    border-radius: 12px;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 700;
+}
+
+.profile-back {
+    min-height: 46px;
+    box-sizing: border-box;
+    align-self: center;
+}
+
+.profile-card h2 {
+    color: #182230;
+    margin-bottom: 8px;
+}
+
+@media (max-width: 560px) {
+    .profile-actions > * {
+        flex: 1;
+        text-align: center;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+    <main class="profile-page">
+        <header class="profile-header">
+            <div>
+                <h1>الملف الشخصي</h1>
+                <p class="profile-subtitle">إدارة بيانات حسابك في SNIPER GO</p>
+            </div>
+            <a class="profile-back" href="{% url 'accounts:dashboard' %}">
+                العودة للحجز
+            </a>
+        </header>
+
+        {% if messages %}
+            <div class="profile-messages" aria-live="polite">
+                {% for message in messages %}
+                    <div class="profile-message {{ message.tags }}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+
+        <section class="profile-card">
+            <div class="profile-avatar" aria-hidden="true">
+                {{ request.user.first_name|first|default:request.user.username|first }}
+            </div>
+
+            <h2>بيانات الحساب</h2>
+            <p class="profile-subtitle" style="margin-bottom:24px">
+                حدّث بياناتك وتأكد من صحتها.
+            </p>
+
+            <form method="post">
+                {% csrf_token %}
+
+                {% if form.non_field_errors %}
+                    <div class="profile-message error">
+                        {{ form.non_field_errors }}
+                    </div>
+                {% endif %}
+
+                <div class="profile-grid">
+                    {% for field in form %}
+                        <div class="profile-field {% if field.name == 'email' or field.name == 'phone_number' %}full{% endif %}">
+                            <label for="{{ field.id_for_label }}">
+                                {{ field.label }}
+                            </label>
+                            {{ field }}
+
+                            {% if field.errors %}
+                                <div class="field-errors">
+                                    {% for error in field.errors %}
+                                        <div>{{ error }}</div>
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
+                        </div>
+                    {% endfor %}
+                </div>
+
+                <div class="profile-actions">
+                    <button type="submit" class="sg-button">
+                        حفظ التعديلات
+                    </button>
+                    <a class="profile-back" href="{% url 'accounts:dashboard' %}">
+                        إلغاء
+                    </a>
+                </div>
+            </form>
+        </section>
+    </main>
+{% endblock %}

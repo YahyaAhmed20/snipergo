@@ -1,3 +1,4 @@
+from asgiref.sync import async_to_sync
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 
@@ -6,7 +7,11 @@ from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.utils import timezone
 
-from accounts.models import CaptainProfile
+from accounts.models import CaptainProfile, Notification, User
+from accounts.services.notifications import (
+    create_notification,
+    dispatch_notification_websocket,
+)
 from accounts.services.reviews import validate_captain_documents
 from trips.models import CaptainOffer, CommissionConfig, Trip
 from trips.services.negotiation import calculate_negotiation_range
@@ -14,15 +19,82 @@ from trips.services.wallet import reserve_trip_commission
 
 
 OFFER_EXPIRY_MINUTES = 2
+TRIP_REQUEST_EXPIRY_MINUTES = 30
 
 
 @transaction.atomic
+def expire_trip_if_needed(*, trip_id):
+    trip = Trip.objects.select_for_update().get(pk=trip_id)
+    now = timezone.now()
+
+    if (
+        trip.status == Trip.Status.REQUESTED
+        and trip.captain_id is None
+        and trip.requested_at
+        <= now - timedelta(minutes=TRIP_REQUEST_EXPIRY_MINUTES)
+    ):
+        trip.status = Trip.Status.EXPIRED
+        trip.save(update_fields=["status", "updated_at"])
+
+        CaptainOffer.objects.filter(
+            trip_id=trip.pk,
+            status=CaptainOffer.Status.PENDING,
+        ).update(
+            status=CaptainOffer.Status.EXPIRED,
+            responded_at=now,
+            updated_at=now,
+        )
+
+        return True
+
+    return False
+
+
+class _ExpiredPendingOffers(Exception):
+    def __init__(self, offer_ids):
+        self.offer_ids = tuple(offer_ids)
+        super().__init__("Expired pending offers must be updated first.")
+
+
+class _ExpiredTripRequest(Exception):
+    def __init__(self, trip_id):
+        self.trip_id = trip_id
+        super().__init__("Trip request has expired.")
+
+
 def create_captain_offer(*, trip_id, captain, amount):
+    while True:
+        try:
+            return _create_captain_offer_atomic(
+                trip_id=trip_id,
+                captain=captain,
+                amount=amount,
+            )
+        except _ExpiredPendingOffers as exc:
+            for offer_id in exc.offer_ids:
+                expire_offer_if_needed(offer_id=offer_id)
+        except _ExpiredTripRequest as exc:
+            if expire_trip_if_needed(trip_id=exc.trip_id):
+                raise ValidationError("This trip has expired.")
+            raise ValidationError("This trip is no longer available.")
+
+
+@transaction.atomic
+def _create_captain_offer_atomic(*, trip_id, captain, amount):
     trip = Trip.objects.select_for_update().get(pk=trip_id)
 
     captain = CaptainProfile.objects.select_for_update().get(
         pk=captain.pk
     )
+
+    if (
+        trip.status == Trip.Status.REQUESTED
+        and trip.captain_id is None
+        and trip.requested_at
+        <= timezone.now()
+        - timedelta(minutes=TRIP_REQUEST_EXPIRY_MINUTES)
+    ):
+        raise _ExpiredTripRequest(trip.pk)
 
     if trip.status != Trip.Status.REQUESTED or trip.captain_id is not None:
         raise ValidationError("This trip is no longer available.")
@@ -74,6 +146,25 @@ def create_captain_offer(*, trip_id, captain, amount):
             f"Offer must be between {minimum_offer} and {maximum_offer}."
         )
 
+    pending_offers = list(
+        CaptainOffer.objects.select_for_update().filter(
+            trip=trip,
+            captain=captain,
+            status=CaptainOffer.Status.PENDING,
+        )
+    )
+
+    now = timezone.now()
+
+    expired_offer_ids = [
+        offer.pk
+        for offer in pending_offers
+        if offer.expires_at <= now
+    ]
+
+    if expired_offer_ids:
+        raise _ExpiredPendingOffers(expired_offer_ids)
+
     if CaptainOffer.objects.filter(
         trip=trip,
         captain=captain,
@@ -104,17 +195,36 @@ def create_captain_offer(*, trip_id, captain, amount):
             )
         raise
 
+    # Persist notification within the transaction; dispatch WebSocket
+    # only after commit via transaction.on_commit().
+    notification = create_notification(
+        user=trip.customer.user,
+        type=Notification.Type.OFFER_RECEIVED,
+        title="عرض جديد",
+        message=f"لديك عرض جديد للرحلة #{trip.pk}",
+        payload={
+            "trip_id": trip.pk,
+            "captain_id": captain.pk,
+            "offer_id": offer.pk,
+        },
+    )
+    transaction.on_commit(
+        lambda n=notification: async_to_sync(dispatch_notification_websocket)(n)
+    )
+
     return offer
 
 
 def accept_captain_offer(*, offer_id, customer):
-    # Expire an outdated offer in a committed transaction first.
+    offer_ref = CaptainOffer.objects.only("trip_id").get(pk=offer_id)
+
+    if expire_trip_if_needed(trip_id=offer_ref.trip_id):
+        raise ValidationError("This trip has expired.")
+
     if expire_offer_if_needed(offer_id=offer_id):
         raise ValidationError("This offer has expired.")
 
     with transaction.atomic():
-        offer_ref = CaptainOffer.objects.only("trip_id").get(pk=offer_id)
-
         trip = Trip.objects.select_for_update().get(
             pk=offer_ref.trip_id
         )
@@ -210,6 +320,23 @@ def accept_captain_offer(*, offer_id, customer):
             ).exclude(pk=offer.pk).update(
                 status=CaptainOffer.Status.REJECTED,
                 responded_at=now,
+            )
+
+            # Persist notification within the transaction; dispatch WebSocket
+            # only after commit via transaction.on_commit().
+            notification = create_notification(
+                user=offer.captain.user,
+                type=Notification.Type.OFFER_ACCEPTED,
+                title="تم قبول عرضك",
+                message=f"تم قبول عرضك للرحلة #{trip.pk}",
+                payload={
+                    "trip_id": trip.pk,
+                    "customer_id": customer.pk,
+                    "offer_id": offer.pk,
+                },
+            )
+            transaction.on_commit(
+                lambda n=notification: async_to_sync(dispatch_notification_websocket)(n)
             )
 
             return offer

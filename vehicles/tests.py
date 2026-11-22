@@ -46,6 +46,7 @@ class VehicleReviewServiceTests(TestCase):
             CaptainDocument.DocumentType.NATIONAL_ID,
             CaptainDocument.DocumentType.DRIVING_LICENSE,
             CaptainDocument.DocumentType.VEHICLE_LICENSE,
+            CaptainDocument.DocumentType.CRIMINAL_RECORD,
         ):
             document = CaptainDocument.objects.create(
                 captain=self.captain,

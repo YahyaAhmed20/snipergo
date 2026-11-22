@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}SNIPER GO{% endblock %}</title>
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'css/main.css' %}">
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+    {% block header %}
+    <header class="sg-navbar">
+        <div class="sg-container sg-navbar-inner">
+            <a class="sg-brand" href="{% url 'home' %}">
+                <div class="sg-brand-mark">SG</div>
+                <span>SNIPER GO</span>
+            </a>
+            {% if request.user.is_authenticated %}
+            <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+                {% if request.user.role == "CUSTOMER" %}
+                <a href="{% url 'accounts:customer_profile' %}" style="color: var(--sg-text);">حسابي</a>
+                <a href="{% url 'accounts:customer_trips' %}" style="color: var(--sg-text);">رحلاتي</a>
+                {% elif request.user.role == "CAPTAIN" %}
+                <a href="{% url 'accounts:dashboard' %}" style="color: var(--sg-text);">لوحة القيادة</a>
+                <a href="{% url 'accounts:captain_wallet' %}" style="color: var(--sg-text);">محفظتي</a>
+                <a href="{% url 'accounts:captain_documents' %}" style="color: var(--sg-text);">المستندات</a>
+                <a href="{% url 'vehicles:my_vehicles' %}" style="color: var(--sg-text);">مركباتي</a>
+                {% endif %}
+                <form method="post" action="{% url 'accounts:logout' %}" style="margin: 0;">
+                    {% csrf_token %}
+                    <button type="submit" class="sg-button-secondary" style="padding: 6px 12px; min-height: auto;">خروج</button>
+                </form>
+                <a href="{% url 'accounts:notification_page' %}" style="color: var(--sg-text); position: relative; margin-left: 12px;">
+                    إشعارات
+                    <span id="navbar-unread-badge" style="display: none; position: absolute; top: -8px; left: -8px; min-width: 18px; height: 18px; background: var(--sg-danger); color: #ffffff; border-radius: 9px; font-size: 11px; font-weight: 800; display: flex; align-items: center; justify-content: center; padding: 0 4px;">0</span>
+                </a>
+            {% endif %}
+        </div>
+    </header>
+    {% endblock %}
+
+    <main class="sg-container sg-main">
+        {% if messages %}
+        <div class="sg-list" style="margin-bottom: 20px;">
+            {% for message in messages %}
+            <div class="sg-alert {% if message.tags == 'success' %}sg-alert-success{% elif message.tags == 'error' %}sg-alert-error{% endif %}">
+                {{ message }}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% block content %}{% endblock %}
+    </main>
+    {% block extra_js %}{% endblock %}
+
+    {% if request.user.is_authenticated %}
+    <script>
+    (function () {
+        const badgeEl = document.getElementById("navbar-unread-badge");
+        const unreadCountEndpoint = "{% url 'accounts:notification_unread_count' %}";
+
+        let ws = null;
+        let reconnectTimeout = null;
+        let reconnectDelay = 1000;
+        let maxReconnectDelay = 30000;
+        let stopped = false;
+
+        function buildWsUrl() {
+            const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+            return proto + "//" + window.location.host + "/ws/notifications/";
+        }
+
+        function updateBadge(count) {
+            if (!badgeEl) return;
+            if (count > 0) {
+                badgeEl.textContent = String(count);
+                badgeEl.style.display = "";
+            } else {
+                badgeEl.style.display = "none";
+            }
+        }
+
+        async function fetchUnreadCount() {
+            try {
+                const response = await fetch(unreadCountEndpoint, {
+                    method: "GET",
+                    credentials: "same-origin",
+                    headers: { "Accept": "application/json" }
+                });
+                const data = await response.json();
+                if (response.ok && typeof data.unread_count === "number") {
+                    updateBadge(data.unread_count);
+                }
+            } catch {}
+        }
+
+        function connect() {
+            if (stopped) return;
+            if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+
+            try {
+                ws = new WebSocket(buildWsUrl());
+            } catch (error) {
+                scheduleReconnect();
+                return;
+            }
+
+            ws.onopen = function () {
+                reconnectDelay = 1000;
+                fetchUnreadCount();
+            };
+
+            ws.onmessage = function (event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data && data.type === "notification" && data.notification) {
+                        const current = badgeEl ? parseInt(badgeEl.textContent || "0", 10) : 0;
+                        updateBadge(current + 1);
+
+                        // Notify the notifications page if open
+                        window.dispatchEvent(new CustomEvent("notification-received", {
+                            detail: { notification: data.notification }
+                        }));
+                    }
+                } catch {}
+            };
+
+            ws.onerror = function () {
+                if (ws) ws.close();
+            };
+
+            ws.onclose = function () {
+                ws = null;
+                if (!stopped) {
+                    scheduleReconnect();
+                }
+            };
+        }
+
+        function scheduleReconnect() {
+            if (stopped) return;
+            if (reconnectTimeout) clearTimeout(reconnectTimeout);
+            reconnectTimeout = setTimeout(function () {
+                reconnectDelay = Math.min(reconnectDelay * 2, maxReconnectDelay);
+                connect();
+            }, reconnectDelay);
+        }
+
+        function start() {
+            fetchUnreadCount();
+            connect();
+            document.addEventListener("visibilitychange", function () {
+                if (!document.hidden) {
+                    fetchUnreadCount();
+                    if (ws && ws.readyState === WebSocket.CLOSED) {
+                        connect();
+                    }
+                }
+            });
+            window.addEventListener("pagehide", function () {
+                stopped = true;
+                if (reconnectTimeout) clearTimeout(reconnectTimeout);
+                if (ws) ws.close();
+            });
+        }
+
+        start();
+    })();
+    </script>
+    {% endif %}
+
+</body>
+</html>

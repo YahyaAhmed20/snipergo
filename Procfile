@@ -1,1 +1,1 @@
-web: gunicorn project.wsgi --workers 1 --timeout 120
+web: daphne -b 0.0.0.0 -p ${PORT:-8000} project.asgi:application

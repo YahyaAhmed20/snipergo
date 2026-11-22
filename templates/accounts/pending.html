@@ -1,100 +1,217 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>SNIPER GO - Captain</title>
-</head>
-<body>
-    <h1>SNIPER GO</h1>
-    <h2>Captain Dashboard</h2>
+﻿{% extends "base.html" %}
 
-    {% if messages %}
-        {% for message in messages %}
-            <p>{{ message }}</p>
-        {% endfor %}
+{% block title %}لوحة الكابتن | SNIPER GO{% endblock %}
+
+{% block header %}
+<header class="sg-navbar">
+    <div class="sg-container sg-navbar-content">
+        <div>
+            <h1>SNIPER GO</h1>
+            <p>لوحة تحكم الكابتن</p>
+        </div>
+        {% if captain %}
+            <div class="sg-captain-status">
+                <span>الحساب: {{ captain.get_approval_status_display }}</span>
+                <span>الحالة: {{ captain.get_operational_status_display }}</span>
+            </div>
+        {% endif %}
+    </div>
+</header>
+{% endblock %}
+
+{% block content %}
+{% if captain %}
+    <section class="wallet-summary sg-wallet">
+        <div class="sg-wallet-heading">
+            <h2>المحفظة</h2>
+            <span>ملخص رصيدك</span>
+        </div>
+
+        {% if wallet %}
+            <div class="sg-wallet-grid">
+                <article class="sg-wallet-card">
+                    <span>الرصيد الحالي</span>
+                    <strong>{{ wallet.balance|floatformat:2 }}</strong>
+                    <small>جنيه مصري</small>
+                </article>
+
+                <article class="sg-wallet-card">
+                    <span>الرصيد المحجوز</span>
+                    <strong>{{ wallet.reserved_balance|floatformat:2 }}</strong>
+                    <small>جنيه مصري</small>
+                </article>
+
+                <article class="sg-wallet-card sg-wallet-available">
+                    <span>الرصيد المتاح</span>
+                    <strong>{{ wallet.available_balance|floatformat:2 }}</strong>
+                    <small>جنيه مصري</small>
+                </article>
+            </div>
+        {% else %}
+            <p>المحفظة لسه مش مفعّلة.</p>
+        {% endif %}
+    </section>
+
+    {% if captain.approval_status == "APPROVED" %}
+    <section class="sg-card" style="max-width: min(600px, 100%); margin-inline: auto;">
+        <h2>بيانات الحساب</h2>
+        <p><strong>رقم الهاتف:</strong> {{ captain.phone_number|default:"غير مضاف" }}</p>
+        <p><strong>حالة الاعتماد:</strong> {{ captain.get_approval_status_display }}</p>
+        <p><strong>الحالة التشغيلية:</strong>
+            <span class="sg-status {% if captain.operational_status == 'ONLINE' %}sg-status-success{% else %}sg-status-danger{% endif %}">
+                {{ captain.get_operational_status_display }}
+            </span>
+        </p>
+    </section>
+
+    <section class="sg-actions" style="justify-content: center; margin-top: 16px;">
+        <button type="button" id="status-toggle"
+                class="sg-button {% if captain.operational_status == 'ONLINE' %}sg-button-secondary{% endif %}"
+                data-url="{% url 'accounts:set_operational_status' %}"
+                data-csrf="{{ csrf_token }}"
+                data-next-status="{% if captain.operational_status == 'ONLINE' %}OFFLINE{% else %}ONLINE{% endif %}">
+            {% if captain.operational_status == "ONLINE" %}
+                خلّيني غير متاح
+            {% else %}
+                خلّيني متاح
+            {% endif %}
+        </button>
+        <p id="status-message" role="status" style="margin-top: 10px; text-align: center; min-height: 24px;"></p>
+    </section>
+
+    <section class="sg-actions" style="justify-content: center; margin-top: 16px;">
+        <button type="button" id="location-update-button"
+                class="sg-button sg-button-secondary"
+                style="display: none;">
+            حدّث موقعك يدويًا
+        </button>
+        <p id="location-status" role="status" style="margin-top: 10px; text-align: center; min-height: 24px;"></p>
+    </section>
+    {% else %}
+        <div class="sg-alert sg-alert-error">لازم حسابك يتعتمد الأول قبل ما تستقبل رحلات.</div>
     {% endif %}
 
-    {% if captain %}
-        <p>Approval status: {{ captain.get_approval_status_display }}</p>
-        <p>Operational status: {{ captain.get_operational_status_display }}</p>
+    <p>
+        <a href="{% url 'accounts:captain_documents' %}">
+            إدارة مستنداتي
+        </a>
+    </p>
 
-        <section class="wallet-summary">
-            <h2>Wallet Balance</h2>
+    <p>
+        <a href="{% url 'accounts:request_cash_topup' %}">
+            طلب إيداع نقدي في المحفظة
+        </a>
+    </p>
 
-            {% if wallet %}
-                <p>
-                    Current balance:
-                    <strong>{{ wallet.balance|floatformat:2 }} EGP</strong>
-                </p>
-                <p>
-                    Reserved balance:
-                    <strong>{{ wallet.reserved_balance|floatformat:2 }} EGP</strong>
-                </p>
-                <p>
-                    Available balance:
-                    <strong>{{ wallet.available_balance|floatformat:2 }} EGP</strong>
-                </p>
-            {% else %}
-                <p>Wallet is not set up yet.</p>
-            {% endif %}
-        </section>
+    {% if captain.approval_status == "APPROVED" %}
+    <section>
+        <h3>شحن المحفظة إلكترونيًا</h3>
 
-        {% if captain.approval_status == "APPROVED" %}
-            <form method="post" action="{% url 'accounts:set_operational_status' %}">
-                {% csrf_token %}
+        <form id="paymob-topup-form">
+            {% csrf_token %}
 
-                {% if captain.operational_status == "ONLINE" %}
-                    <input type="hidden" name="status" value="OFFLINE">
-                    <button type="submit">Go Offline</button>
-                {% else %}
-                    <input type="hidden" name="status" value="ONLINE">
-                    <button type="submit">Go Online</button>
-                {% endif %}
-            </form>
-        {% else %}
-            <p>Your account must be approved before you can operate.</p>
-        {% endif %}
+            <label for="topup-amount">المبلغ (جنيه مصري)</label>
+            <input
+                type="number"
+                id="topup-amount"
+                name="amount"
+                min="1"
+                max="99999999.99"
+                step="0.01"
+                required
+            >
 
-        <p>
-            <a href="{% url 'accounts:captain_documents' %}">
-                Manage My Documents
-            </a>
+            <button type="submit" id="paymob-submit">
+                كمّل للدفع
+            </button>
+        </form>
+
+        <p id="paymob-message" role="status"></p>
+    </section>
+    {% endif %}
+
+    <p>
+        <a href="{% url 'vehicles:my_vehicles' %}">
+            سجّل مركباتك وتحكّم فيها
+        </a>
+    </p>
+
+    {% if captain.approval_status == "APPROVED" %}
+    <section id="my-trips-section">
+        <h2>رحلاتي الحالية</h2>
+        <p id="my-trips-status" role="status">
+            بنحمّل الرحلات اللي متعيّنة لك...
+        </p>
+        <div id="my-trips-list"></div>
+    </section>
+
+    <section id="pending-collections-section">
+        <h2>المبالغ النقدية اللي لازم تحصّلها</h2>
+        <p id="pending-collections-status" role="status">
+            بنحمّل المبالغ النقدية المعلّقة...
+        </p>
+        <div id="pending-collections-list"></div>
+    </section>
+
+    <section id="available-trips-section">
+        <h2>الرحلات المتاحة</h2>
+        <p id="available-trips-status" role="status">
+            مستنيين موقعك يتحدّث عشان نعرض الرحلات...
+        </p>
+        <div id="available-trips-list"></div>
+    </section>
+
+    <section id="my-offers-section" class="sg-section">
+        <div class="sg-section-heading">
+            <div>
+                <h2>عروضي المرسلة</h2>
+                <p>تابع عروضك وحالة كل عرض بسهولة</p>
+            </div>
+            <span id="my-offers-count">0 عرض</span>
+        </div>
+
+        <p id="offer-submit-feedback" role="status" aria-live="polite"></p>
+
+        <p id="my-offers-status" role="status">
+            جاري تحميل عروضك...
         </p>
 
+        <div id="my-offers-list"></div>
+    </section>
 
-<p>
-    <a href="{% url 'accounts:request_cash_topup' %}">
-        Request Wallet Cash Deposit
-    </a>
-</p>
+    <section id="captain-reviews-section" class="sg-section">
+        <div class="sg-section-heading">
+            <div>
+                <h2>تقييمات العملاء</h2>
+                <p>تقييمات رحلاتك المكتملة</p>
+            </div>
+            <div class="captain-rating-summary">
+                <span class="rating-average">
+                    {{ captain.average_rating|floatformat:1 }}
+                </span>
+                <span class="rating-star">★</span>
+                <span class="rating-count" id="captain-review-count">0 تقييم</span>
+            </div>
+        </div>
 
-{% if captain.approval_status == "APPROVED" %}
-<section>
-    <h3>Top Up Wallet with Paymob</h3>
+        <p id="captain-reviews-status" role="status">
+            جاري تحميل التقييمات...
+        </p>
 
-    <form id="paymob-topup-form">
-        {% csrf_token %}
+        <div id="captain-reviews-list"></div>
+    </section>
+    {% endif %}
+{% else %}
+    <p>{{ message }}</p>
+{% endif %}
 
-        <label for="topup-amount">Amount (EGP)</label>
-        <input
-            type="number"
-            id="topup-amount"
-            name="amount"
-            min="1"
-            max="99999999.99"
-            step="0.01"
-            required
-        >
+<form method="post" action="{% url 'accounts:logout' %}">
+    {% csrf_token %}
+    <button type="submit">تسجيل الخروج</button>
+</form>
+{% endblock %}
 
-        <button type="submit" id="paymob-submit">
-            Continue to Paymob
-        </button>
-    </form>
-
-    <p id="paymob-message" role="status"></p>
-</section>
-
+{% block extra_js %}
 <script>
 (function () {
     const form = document.getElementById("paymob-topup-form");
@@ -107,7 +224,7 @@
     );
 
     if (!csrfInput) {
-        message.textContent = "Security token is unavailable.";
+        message.textContent = "مش قادرين نلاقي رمز الحماية. أعد تحميل الصفحة.";
         button.disabled = true;
         return;
     }
@@ -117,7 +234,7 @@
         if (button.disabled) return;
 
         button.disabled = true;
-        message.textContent = "Creating payment session...";
+        message.textContent = "جاري إنشاء جلسة الدفع...";
 
         try {
             const response = await fetch(
@@ -139,9 +256,7 @@
             try {
                 data = await response.json();
             } catch {
-                throw new Error(
-                    "Unexpected response from the payment service."
-                );
+                throw new Error("الرد من خدمة الدفع غير متوقع.");
             }
 
             if (!response.ok) {
@@ -149,7 +264,7 @@
                     ? data.detail.join(" ")
                     : data.detail;
 
-                throw new Error(detail || "Unable to start payment.");
+                throw new Error(detail || "مش قادرين نبدأ عملية الدفع.");
             }
 
             let checkoutUrl;
@@ -157,7 +272,7 @@
             try {
                 checkoutUrl = new URL(data.checkout_url);
             } catch {
-                throw new Error("Payment URL was not returned correctly.");
+                throw new Error("رابط الدفع رجع بشكل غير صحيح.");
             }
 
             if (
@@ -167,128 +282,1097 @@
                 checkoutUrl.username ||
                 checkoutUrl.password
             ) {
-                throw new Error("Payment URL was not returned correctly.");
+                throw new Error("رابط الدفع رجع بشكل غير صحيح.");
             }
 
             window.location.assign(checkoutUrl.href);
 
         } catch (error) {
             message.textContent =
-                error.message || "Connection error. Please try again.";
+                error.message || "فيه مشكلة في الاتصال. جرّب تاني.";
             button.disabled = false;
         }
     });
 })();
+
+<script>
+(function () {
+    const captainIsApproved = {% if captain and captain.approval_status == "APPROVED" %}true{% else %}false{% endif %};
+    const captainIsOnline = {% if captain and captain.operational_status == "ONLINE" %}true{% else %}false{% endif %};
+
+    if (!captainIsApproved || !captainIsOnline) return;
+
+    const locationStatus = document.getElementById("location-status");
+    const locationButton = document.getElementById("location-update-button");
+
+    if (!("geolocation" in navigator)) {
+        if (locationStatus) {
+            locationStatus.textContent = "المتصفح ده مش بيدعم تحديد الموقع.";
+            locationStatus.style.color = "#fca5a5";
+        }
+        if (locationButton) locationButton.style.display = "";
+        return;
+    }
+
+    const endpoint = "{% url 'accounts:captain_location_update' %}";
+    const csrfToken = document.querySelector(
+        'input[name="csrfmiddlewaretoken"]'
+    )?.value;
+
+    if (!csrfToken) {
+        if (locationStatus) {
+            locationStatus.textContent = "رمز الحماية مش متاح. أعد تحميل الصفحة.";
+            locationStatus.style.color = "#fca5a5";
+        }
+        if (locationButton) locationButton.style.display = "";
+        return;
+    }
+
+    let stopped = false;
+    let timerId = null;
+    let requestInProgress = false;
+
+    function showLocationMessage(text, isError = false) {
+        if (!locationStatus) return;
+        locationStatus.textContent = text;
+        locationStatus.style.color = isError ? "#fca5a5" : "#86efac";
+    }
+
+    async function sendLocation(position) {
+        if (stopped || requestInProgress) return;
+
+        requestInProgress = true;
+
+        try {
+            const response = await fetch(endpoint, {
+                method: "POST",
+                credentials: "same-origin",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRFToken": csrfToken
+                },
+                body: JSON.stringify({
+                    latitude: position.coords.latitude,
+                    longitude: position.coords.longitude
+                })
+            });
+
+            if (!response.ok) {
+                let detail = "فشل تحديث الموقع.";
+                try {
+                    const data = await response.json();
+                    detail = data.detail || detail;
+                } catch {}
+                showLocationMessage(detail, true);
+                if (locationButton) locationButton.style.display = "";
+                return;
+            }
+
+            showLocationMessage("تم تحديث موقعك بنجاح.");
+            setTimeout(() => {
+                if (locationStatus) locationStatus.textContent = "";
+            }, 5000);
+
+            if (locationButton) locationButton.style.display = "none";
+        } catch (error) {
+            showLocationMessage("مش قادرين نبعت موقع الكابتن. جرّب تاني.", true);
+            if (locationButton) locationButton.style.display = "";
+        } finally {
+            requestInProgress = false;
+        }
+    }
+
+    function handleLocationError(error) {
+        let message;
+        switch (error.code) {
+            case 1:
+                message = "مسموح الوصول للموقع مرفوض. حدّث موقعك يدويًا.";
+                break;
+            case 2:
+                message = "الموقع غير متاح دلوقتي. حدّث موقعك يدويًا.";
+                break;
+            case 3:
+                message = "انتهت مهلة جلب الموقع. حدّث موقعك يدويًا.";
+                break;
+            default:
+                message = "تعذر تحديد الموقع. حدّث موقعك يدويًا.";
+        }
+        showLocationMessage(message, true);
+        if (locationButton) locationButton.style.display = "";
+    }
+
+    function requestLocation() {
+        if (stopped || document.hidden) return;
+
+        navigator.geolocation.getCurrentPosition(
+            sendLocation,
+            handleLocationError,
+            {
+                enableHighAccuracy: true,
+                timeout: 15000,
+                maximumAge: 10000
+            }
+        );
+    }
+
+    if (locationButton) {
+        locationButton.addEventListener("click", function () {
+            requestLocation();
+        });
+    }
+
+    requestLocation();
+    timerId = window.setInterval(requestLocation, 30000);
+
+    document.addEventListener("visibilitychange", function () {
+        if (!document.hidden) requestLocation();
+    });
+
+    window.addEventListener("pagehide", function () {
+        stopped = true;
+        if (timerId !== null) {
+            window.clearInterval(timerId);
+        }
+    });
+})();
 </script>
-{% endif %}
 
+<script>
+(function () {
+    const section = document.getElementById("available-trips-section");
+    if (!section) return;
 
-        <p>
-            <a href="{% url 'vehicles:my_vehicles' %}">
-                Register / Manage My Vehicles
-            </a>
-        </p>
-    {% else %}
-        <p>{{ message }}</p>
-    {% endif %}
+    const statusElement = document.getElementById("available-trips-status");
+    const listElement = document.getElementById("available-trips-list");
+    const captainIsOnline = {% if captain and captain.operational_status == "ONLINE" %}true{% else %}false{% endif %};
+    const endpoint = "/api/trips/available/";
+    const csrfToken = document.querySelector(
+        'input[name="csrfmiddlewaretoken"]'
+    )?.value;
 
+    if (!captainIsOnline) {
+        statusElement.textContent = "خلّي نفسك متاح عشان تشوف الرحلات المتاحة.";
+        return;
+    }
 
+    if (!csrfToken) {
+        statusElement.textContent = "رمز الحماية مش متاح. أعد تحميل الصفحة.";
+        return;
+    }
 
+    let stopped = false;
+    let loading = false;
+    let timerId = null;
 
-    <form method="post" action="{% url 'accounts:logout' %}">
-        {% csrf_token %}
-        <button type="submit">Log out</button>
-    </form>
+    function addText(parent, tag, text) {
+        const element = document.createElement(tag);
+        element.textContent = text;
+        parent.appendChild(element);
+        return element;
+    }
 
-    <script>
-    (function () {
-        const captainIsApproved = {% if captain and captain.approval_status == "APPROVED" %}true{% else %}false{% endif %};
-        const captainIsOnline = {% if captain and captain.operational_status == "ONLINE" %}true{% else %}false{% endif %};
-
-        if (!captainIsApproved || !captainIsOnline) return;
-
-        if (!("geolocation" in navigator)) {
-            console.error("Geolocation is not supported by this browser.");
-            return;
+    function getErrorMessage(data, fallback) {
+        if (typeof data?.detail === "string") {
+            return data.detail;
         }
 
-        const endpoint = "{% url 'accounts:captain_location_update' %}";
-        const csrfToken = document.querySelector(
-            'input[name="csrfmiddlewaretoken"]'
-        )?.value;
-
-        if (!csrfToken) {
-            console.error("CSRF token is unavailable.");
-            return;
+        if (Array.isArray(data?.detail)) {
+            return data.detail.map(String).join(" ");
         }
 
-        let stopped = false;
-        let timerId = null;
-        let requestInProgress = false;
-
-        async function sendLocation(position) {
-            if (stopped || requestInProgress) return;
-
-            requestInProgress = true;
-
-            try {
-                const response = await fetch(endpoint, {
-                    method: "POST",
-                    credentials: "same-origin",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "X-CSRFToken": csrfToken
-                    },
-                    body: JSON.stringify({
-                        latitude: position.coords.latitude,
-                        longitude: position.coords.longitude
-                    })
-                });
-
-                if (!response.ok) {
-                    console.error(
-                        "Location update failed:",
-                        response.status,
-                        await response.text()
-                    );
+        if (data && typeof data === "object") {
+            const messages = Object.values(data).flatMap(value => {
+                if (Array.isArray(value)) {
+                    return value.map(String);
                 }
-            } catch (error) {
-                console.error("Unable to send captain location:", error);
-            } finally {
-                requestInProgress = false;
+
+                if (typeof value === "string") {
+                    return [value];
+                }
+
+                return [];
+            });
+
+            if (messages.length > 0) {
+                return messages.join(" ");
             }
         }
 
-        function requestLocation() {
-            if (stopped || document.hidden) return;
+        return fallback;
+    }
 
-            navigator.geolocation.getCurrentPosition(
-                sendLocation,
-                function (error) {
-                    console.error("Unable to get captain location:", error.message);
-                },
-                {
-                    enableHighAccuracy: true,
-                    timeout: 15000,
-                    maximumAge: 10000
+    async function loadTrips() {
+        if (stopped || loading || document.hidden) return;
+        loading = true;
+
+        try {
+            const response = await fetch(endpoint, {
+                method: "GET",
+                credentials: "same-origin",
+                headers: { "Accept": "application/json" }
+            });
+
+            let data;
+            try {
+                data = await response.json();
+            } catch {
+                throw new Error("الرد من السيرفر غير متوقع.");
+            }
+
+            if (!response.ok) {
+                throw new Error(getErrorMessage(data, "مش قادرين نحمّل الرحلات."));
+            }
+
+            if (!Array.isArray(data)) {
+                throw new Error("شكل رد الرحلات غير متوقع.");
+            }
+
+            listElement.replaceChildren();
+
+            if (data.length === 0) {
+                statusElement.textContent = "مفيش رحلات متاحة دلوقتي. بندور على رحلات جديدة...";
+                return;
+            }
+
+            statusElement.textContent = "عدد الرحلات المتاحة: " + data.length;
+
+            data.forEach(function (trip) {
+                const card = document.createElement("article");
+                card.style.border = "1px solid #ccc";
+                card.style.padding = "12px";
+                card.style.margin = "12px 0";
+
+                addText(card, "h3", "رحلة رقم " + trip.id);
+                addText(card, "p", "نقطة الانطلاق: " + trip.pickup_address);
+                addText(card, "p", "الوجهة: " + trip.destination_address);
+                addText(card, "p", "السعر التقديري: " + trip.estimated_fare + " جنيه");
+                addText(card, "p", "طريقة الدفع: " + (trip.payment_method === "CASH" ? "نقدًا" : trip.payment_method === "ONLINE" ? "إلكتروني" : trip.payment_method));
+
+                const hasRange =
+                    trip.minimum_offer !== null &&
+                    trip.minimum_offer !== undefined &&
+                    trip.maximum_offer !== null &&
+                    trip.maximum_offer !== undefined;
+
+                if (hasRange) {
+                    addText(
+                        card,
+                        "p",
+                        "نطاق العرض المسموح: " + trip.minimum_offer +
+                        " – " + trip.maximum_offer + " جنيه"
+                    );
+                } else {
+                    addText(
+                        card,
+                        "p",
+                        "نطاق العرض مش متاح. كلّم الدعم لو المشكلة كملت."
+                    );
                 }
+
+                const form = document.createElement("form");
+                const label = addText(form, "label", "عرضك بالسعر (جنيه): ");
+                const input = document.createElement("input");
+                input.type = "number";
+                input.name = "amount";
+                input.step = "0.01";
+                input.min = hasRange ? trip.minimum_offer : "0";
+                input.max = hasRange ? trip.maximum_offer : "";
+                input.required = true;
+                input.disabled = !hasRange;
+                label.appendChild(input);
+
+                if (hasRange) {
+                    input.placeholder = trip.minimum_offer + " - " + trip.maximum_offer;
+                }
+
+                const button = addText(form, "button", "ابعت العرض");
+                button.type = "submit";
+                button.disabled = !hasRange;
+
+                const message = addText(card, "p", "");
+                message.setAttribute("role", "status");
+
+                form.addEventListener("submit", async function (event) {
+                    event.preventDefault();
+                    if (button.disabled || !form.reportValidity()) return;
+
+                    const amount = Number(input.value);
+                    if (
+                        !Number.isFinite(amount) ||
+                        (hasRange && (
+                            amount < Number(trip.minimum_offer) ||
+                            amount > Number(trip.maximum_offer)
+                        ))
+                    ) {
+                        message.textContent = "اكتب مبلغ في النطاق المسموح.";
+                        return;
+                    }
+
+                    button.disabled = true;
+                    message.textContent = "بنبعت العرض...";
+
+                    try {
+                        const offerResponse = await fetch(
+                            "/api/trips/" + encodeURIComponent(trip.id) + "/offers/",
+                            {
+                                method: "POST",
+                                credentials: "same-origin",
+                                headers: {
+                                    "Content-Type": "application/json",
+                                    "X-CSRFToken": csrfToken,
+                                    "Accept": "application/json"
+                                },
+                                body: JSON.stringify({ amount: input.value })
+                            }
+                        );
+
+                        let offerData;
+                        try {
+                            offerData = await offerResponse.json();
+                        } catch {
+                            throw new Error("رد غير متوقع وقت إرسال العرض.");
+                        }
+
+                        if (!offerResponse.ok) {
+                            throw new Error(
+                                getErrorMessage(offerData, "إرسال العرض فشل.")
+                            );
+                        }
+
+                        const feedback = document.getElementById("offer-submit-feedback");
+
+                        if (feedback) {
+                            feedback.textContent =
+                                "✓ تم إرسال عرضك بنجاح. تقدر تتابع حالته في قسم عروضي المرسلة.";
+                            feedback.dataset.type = "success";
+                        }
+
+                        input.disabled = true;
+                        button.disabled = true;
+
+                        window.dispatchEvent(
+                            new CustomEvent("captain-offer-submitted", {
+                                detail: {
+                                    tripId: trip.id,
+                                    amount: input.value
+                                }
+                            })
+                        );
+
+                        loadTrips();
+                    } catch (error) {
+                        message.textContent =
+                            error.message || "فيه مشكلة في الاتصال. جرّب تاني.";
+                        button.disabled = false;
+                    }
+                });
+
+                card.appendChild(form);
+                listElement.appendChild(card);
+            });
+        } catch (error) {
+            statusElement.textContent =
+                error.message || "مش قادرين نحمّل الرحلات. هنحاول تاني قريب.";
+        } finally {
+            loading = false;
+        }
+    }
+
+    function startPolling() {
+        if (stopped || timerId !== null) return;
+        loadTrips();
+        timerId = window.setInterval(loadTrips, 10000);
+    }
+
+    document.addEventListener("visibilitychange", function () {
+        if (!document.hidden) loadTrips();
+    });
+
+    window.addEventListener("pagehide", function () {
+        stopped = true;
+        if (timerId !== null) window.clearInterval(timerId);
+    });
+
+    startPolling();
+})();
+</script>
+
+<script>
+(function () {
+    const section = document.getElementById("my-trips-section");
+    if (!section) return;
+
+    const statusElement = document.getElementById("my-trips-status");
+    const listElement = document.getElementById("my-trips-list");
+    const collectionsStatusElement = document.getElementById("pending-collections-status");
+    const collectionsListElement = document.getElementById("pending-collections-list");
+
+    const myTripsLoadingEl = document.createElement("p");
+    myTripsLoadingEl.role = "status";
+    myTripsLoadingEl.className = "sg-loading";
+    myTripsLoadingEl.style.display = "none";
+    myTripsLoadingEl.textContent = "جارٍ تحديث الرحلات...";
+    section.appendChild(myTripsLoadingEl);
+    const captainIsOnline = {% if captain and captain.operational_status == "ONLINE" %}true{% else %}false{% endif %};
+    const endpoint = "/api/trips/my-trips/";
+    const csrfToken = document.querySelector(
+        'input[name="csrfmiddlewaretoken"]'
+    )?.value;
+
+    if (!captainIsOnline) {
+        statusElement.textContent = "خلّي نفسك متاح عشان تدير الرحلات المتعيّنة لك.";
+        return;
+    }
+
+    if (!csrfToken) {
+        statusElement.textContent = "رمز الحماية مش متاح. أعد تحميل الصفحة.";
+        return;
+    }
+
+    let loading = false;
+    let stopped = false;
+    let timerId = null;
+
+    function addText(parent, tag, text) {
+        const element = document.createElement(tag);
+        element.textContent = text;
+        parent.appendChild(element);
+        return element;
+    }
+
+    function errorMessage(data, fallback) {
+        if (typeof data?.detail === "string") return data.detail;
+        if (Array.isArray(data?.detail)) return data.detail.map(String).join(" ");
+
+        if (data && typeof data === "object") {
+            const messages = Object.values(data).flatMap(value =>
+                Array.isArray(value)
+                    ? value.map(String)
+                    : typeof value === "string" ? [value] : []
+            );
+            if (messages.length) return messages.join(" ");
+        }
+        return fallback;
+    }
+
+    async function postAction(url) {
+        const response = await fetch(url, {
+            method: "POST",
+            credentials: "same-origin",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": csrfToken,
+                "Accept": "application/json"
+            },
+            body: "{}"
+        });
+
+        let data;
+        try {
+            data = await response.json();
+        } catch {
+            throw new Error("الرد من السيرفر غير متوقع.");
+        }
+
+        if (!response.ok) {
+            throw new Error(errorMessage(data, "العملية فشلت."));
+        }
+    }
+
+    function addActionButton(card, trip, label, action, message) {
+        const button = addText(card, "button", label);
+        button.type = "button";
+
+        button.addEventListener("click", async function () {
+            button.disabled = true;
+            message.textContent = "بننفّذ...";
+
+            try {
+                await postAction(
+                    "/api/trips/" + encodeURIComponent(trip.id) +
+                    "/actions/" + action + "/"
+                );
+                message.textContent = "تم تحديث الرحلة.";
+                await loadTrips();
+            } catch (error) {
+                message.textContent = error.message || "الطلب فشل.";
+                button.disabled = false;
+            }
+        });
+    }
+
+    async function loadTrips() {
+        if (stopped || loading || document.hidden) return;
+        loading = true;
+        myTripsLoadingEl.style.display = "";
+
+        try {
+            const response = await fetch(endpoint, {
+                credentials: "same-origin",
+                headers: { "Accept": "application/json" }
+            });
+
+            let data;
+            try {
+                data = await response.json();
+            } catch {
+                throw new Error("الرد من السيرفر غير متوقع.");
+            }
+
+            if (!response.ok) {
+                throw new Error(errorMessage(data, "مش قادرين نحمّل الرحلات المتعيّنة لك."));
+            }
+
+            if (!Array.isArray(data)) {
+                throw new Error("رد الرحلات غير متوقع.");
+            }
+
+            listElement.replaceChildren();
+            collectionsListElement.replaceChildren();
+
+            const pendingCollections = data.filter(trip =>
+                trip.status === "COMPLETED" &&
+                trip.payment_method === "CASH" &&
+                ["PENDING", "FAILED"].includes(trip.collection_status)
+            );
+
+            const activeTrips = data.filter(trip => !pendingCollections.includes(trip));
+
+            statusElement.textContent = activeTrips.length
+                ? "عدد الرحلات النشطة: " + activeTrips.length
+                : "مفيش رحلات نشطة دلوقتي.";
+
+            collectionsStatusElement.textContent = pendingCollections.length
+                ? "عدد المبالغ النقدية اللي لازم تحصّلها: " + pendingCollections.length
+                : "مفيش مبالغ نقدية معلّقة.";
+
+            data.forEach(function (trip) {
+                const isPendingCollection =
+                    trip.status === "COMPLETED" &&
+                    trip.payment_method === "CASH" &&
+                    ["PENDING", "FAILED"].includes(trip.collection_status);
+
+                const targetList = isPendingCollection
+                    ? collectionsListElement
+                    : listElement;
+
+                const card = document.createElement("article");
+                card.style.border = "1px solid #ccc";
+                card.style.padding = "12px";
+                card.style.margin = "12px 0";
+
+                addText(card, "h3", "رحلة رقم " + trip.id);
+                addText(card, "p", "نقطة الانطلاق: " + trip.pickup_address);
+                addText(card, "p", "الوجهة: " + trip.destination_address);
+                addText(card, "p", "حالة الرحلة: " + ({ ACCEPTED: "تم قبولها", ARRIVING: "الكابتن في الطريق", ARRIVED: "وصل الكابتن", IN_PROGRESS: "جارية", COMPLETED: "مكتملة", CANCELLED: "ملغاة" }[trip.status] || trip.status));
+                addText(card, "p", "طريقة الدفع: " + (trip.payment_method === "CASH" ? "نقدًا" : trip.payment_method === "ONLINE" ? "إلكتروني" : trip.payment_method));
+
+                const fare = trip.final_fare ?? trip.agreed_fare ?? trip.estimated_fare;
+                if (fare !== null && fare !== undefined) {
+                    addText(card, "p", "الأجرة: " + fare + " جنيه");
+                }
+
+                const message = addText(card, "p", "");
+                message.setAttribute("role", "status");
+
+                if (trip.status === "ACCEPTED") {
+                    addActionButton(card, trip, "أنا في الطريق", "arriving", message);
+                } else if (trip.status === "ARRIVING") {
+                    addActionButton(card, trip, "وصلت نقطة الانطلاق", "arrived", message);
+                } else if (trip.status === "ARRIVED") {
+                    addActionButton(card, trip, "ابدأ الرحلة", "start", message);
+                } else if (trip.status === "IN_PROGRESS") {
+                    addActionButton(card, trip, "اقفل الرحلة", "complete", message);
+                }
+
+                if (
+                    trip.status === "COMPLETED" &&
+                    trip.payment_method === "CASH" &&
+                    ["PENDING", "FAILED"].includes(trip.collection_status)
+                ) {
+                    const collectButton = addText(
+                        card, "button", "أكّد تحصيل المبلغ النقدي"
+                    );
+                    collectButton.type = "button";
+
+                    collectButton.addEventListener("click", async function () {
+                        collectButton.disabled = true;
+                        message.textContent = "بنأكّد التحصيل...";
+
+                        try {
+                            await postAction(
+                                "/api/trips/" + encodeURIComponent(trip.id) +
+                                "/cash-collection/confirm/"
+                            );
+                            message.textContent = "تم تأكيد تحصيل المبلغ النقدي.";
+                            await loadTrips();
+                        } catch (error) {
+                            message.textContent =
+                                error.message || "تأكيد التحصيل فشل.";
+                            collectButton.disabled = false;
+                        }
+                    });
+                }
+
+                targetList.appendChild(card);
+            });
+        } catch (error) {
+            statusElement.textContent =
+                error.message || "مش قادرين نحمّل الرحلات المتعيّنة لك.";
+        } finally {
+            loading = false;
+            myTripsLoadingEl.style.display = "none";
+        }
+    }
+
+    function startPolling() {
+        if (stopped || timerId !== null) return;
+        loadTrips();
+        timerId = window.setInterval(loadTrips, 10000);
+    }
+
+    document.addEventListener("visibilitychange", function () {
+        if (!document.hidden) loadTrips();
+    });
+
+    window.addEventListener("pagehide", function () {
+        stopped = true;
+        if (timerId !== null) window.clearInterval(timerId);
+    });
+
+    startPolling();
+})();
+</script>
+
+<script>
+(function () {
+    const section = document.getElementById("my-offers-section");
+    if (!section) return;
+
+    const list = document.getElementById("my-offers-list");
+    const status = document.getElementById("my-offers-status");
+    const count = document.getElementById("my-offers-count");
+
+    const endpoint = "/api/trips/my-offers/";
+
+    let loading = false;
+    let stopped = false;
+    let timer = null;
+    let countdownTimer = null;
+
+    const myOffersLoadingEl = document.createElement("p");
+    myOffersLoadingEl.role = "status";
+    myOffersLoadingEl.className = "sg-loading";
+    myOffersLoadingEl.style.display = "none";
+    myOffersLoadingEl.textContent = "جارٍ تحديث العروض...";
+    section.appendChild(myOffersLoadingEl);
+
+    const statusLabels = {
+        PENDING: "بانتظار اختيار العميل",
+        ACCEPTED: "العميل اختار عرضك",
+        REJECTED: "العميل اختار عرضًا آخر",
+        EXPIRED: "انتهت صلاحية العرض"
+    };
+
+    const statusClasses = {
+        PENDING: "pending",
+        ACCEPTED: "accepted",
+        REJECTED: "rejected",
+        EXPIRED: "expired"
+    };
+
+    function addText(parent, tag, value, className) {
+        const element = document.createElement(tag);
+        element.textContent = value ?? "";
+        if (className) element.className = className;
+        parent.appendChild(element);
+        return element;
+    }
+
+    function formatDate(value) {
+        if (!value) return "غير متاح";
+
+        const date = new Date(value);
+
+        if (Number.isNaN(date.getTime())) return "غير متاح";
+
+        return date.toLocaleString("ar-EG", {
+            dateStyle: "short",
+            timeStyle: "short"
+        });
+    }
+
+    function createCard(offer) {
+        const card = document.createElement("article");
+        card.className = "captain-offer-card";
+
+        const header = document.createElement("div");
+        header.className = "captain-offer-header";
+
+        addText(
+            header,
+            "h3",
+            "رحلة رقم " + offer.trip_id
+        );
+
+        const badge = addText(
+            header,
+            "span",
+            statusLabels[offer.status] || offer.status,
+            "offer-status " + (statusClasses[offer.status] || "")
+        );
+
+        card.appendChild(header);
+
+        const route = document.createElement("div");
+        route.className = "offer-route";
+
+        addText(
+            route,
+            "p",
+            "نقطة الانطلاق: " + offer.pickup_address
+        );
+
+        addText(
+            route,
+            "p",
+            "الوجهة: " + offer.destination_address
+        );
+
+        card.appendChild(route);
+
+        const price = document.createElement("div");
+        price.className = "captain-offer-price";
+
+        addText(price, "span", "السعر الذي قدمته");
+        addText(
+            price,
+            "strong",
+            Number(offer.amount).toFixed(2) + " جنيه"
+        );
+
+        card.appendChild(price);
+
+        const footer = document.createElement("div");
+        footer.className = "captain-offer-footer";
+
+        addText(
+            footer,
+            "span",
+            "تاريخ الإرسال: " + formatDate(offer.created_at)
+        );
+
+        if (offer.status === "PENDING" && offer.expires_at) {
+            const expiryMs = new Date(offer.expires_at).getTime();
+            const remaining = expiryMs - Date.now();
+
+            if (remaining > 0) {
+                const seconds = Math.ceil(remaining / 1000);
+                const minutes = Math.floor(seconds / 60);
+                const rest = seconds % 60;
+
+                const countdownEl = addText(
+                    footer,
+                    "strong",
+                    "متبقي " + minutes + ":" +
+                    String(rest).padStart(2, "0"),
+                    "offer-countdown"
+                );
+                countdownEl.dataset.expiresAt = String(expiryMs);
+            } else {
+                addText(
+                    footer,
+                    "strong",
+                    "انتهى الوقت - جاري تحديث الحالة",
+                    "offer-countdown expired"
+                );
+            }
+        }
+
+        card.appendChild(footer);
+
+        if (offer.status === "ACCEPTED") {
+            addText(
+                card,
+                "p",
+                "تم اختيار عرضك! تابع الرحلة في قسم رحلاتي الحالية.",
+                "offer-success-note"
             );
         }
 
-        requestLocation();
-        timerId = window.setInterval(requestLocation, 30000);
+        return card;
+    }
 
-        document.addEventListener("visibilitychange", function () {
-            if (!document.hidden) requestLocation();
-        });
+    async function loadOffers() {
+        if (loading || stopped || document.hidden) return;
 
-        window.addEventListener("pagehide", function () {
-            stopped = true;
-            if (timerId !== null) {
-                window.clearInterval(timerId);
+        loading = true;
+        myOffersLoadingEl.style.display = "";
+
+        try {
+            const response = await fetch(endpoint, {
+                method: "GET",
+                credentials: "same-origin",
+                headers: {
+                    "Accept": "application/json"
+                }
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(
+                    data.detail || "تعذر تحميل عروضك."
+                );
+            }
+
+            if (!Array.isArray(data)) {
+                throw new Error("بيانات العروض غير صحيحة.");
+            }
+
+            list.replaceChildren();
+
+            count.textContent = data.length + " عرض";
+
+            if (data.length === 0) {
+                status.textContent = "لسه ما أرسلتش أي عروض.";
+                return;
+            }
+
+            status.textContent = "";
+
+            data.forEach(function (offer) {
+                list.appendChild(createCard(offer));
+            });
+        } catch (error) {
+            status.textContent =
+                error.message || "تعذر تحديث العروض.";
+        } finally {
+            loading = false;
+            myOffersLoadingEl.style.display = "none";
+        }
+    }
+
+    function updateCountdowns() {
+        const now = Date.now();
+        document.querySelectorAll(".offer-countdown[data-expires-at]").forEach(el => {
+            const expiresAt = Number(el.dataset.expiresAt);
+            const remaining = expiresAt - now;
+            if (remaining > 0) {
+                const seconds = Math.ceil(remaining / 1000);
+                const minutes = Math.floor(seconds / 60);
+                const rest = seconds % 60;
+                el.textContent = "متبقي " + minutes + ":" + String(rest).padStart(2, "0");
+                el.classList.remove("expired");
+            } else {
+                el.textContent = "انتهى الوقت - جاري تحديث الحالة";
+                el.classList.add("expired");
             }
         });
-    })();
-    </script>
-</body>
-</html>
+    }
+
+    window.addEventListener(
+        "captain-offer-submitted",
+        loadOffers
+    );
+
+    document.addEventListener("visibilitychange", function () {
+        if (!document.hidden) loadOffers();
+    });
+
+    window.addEventListener("pagehide", function () {
+        stopped = true;
+        if (timer !== null) {
+            window.clearInterval(timer);
+        }
+        if (countdownTimer !== null) {
+            window.clearInterval(countdownTimer);
+        }
+    });
+
+    loadOffers();
+    timer = window.setInterval(loadOffers, 5000);
+    countdownTimer = window.setInterval(updateCountdowns, 1000);
+})();
+</script>
+
+<script>
+(function () {
+    const section = document.getElementById("captain-reviews-section");
+    if (!section) return;
+
+    const statusEl = document.getElementById("captain-reviews-status");
+    const listEl = document.getElementById("captain-reviews-list");
+    const countEl = document.getElementById("captain-review-count");
+    const endpoint = "/api/trips/my-reviews/";
+    const csrfToken = document.querySelector(
+        'input[name="csrfmiddlewaretoken"]'
+    )?.value;
+
+    let loading = false;
+    let stopped = false;
+
+    function addText(parent, tag, text, className) {
+        const element = document.createElement(tag);
+        element.textContent = text;
+        if (className) element.className = className;
+        parent.appendChild(element);
+        return element;
+    }
+
+    function formatDate(value) {
+        if (!value) return "غير متاح";
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return "غير متاح";
+        return date.toLocaleString("ar-EG", {
+            dateStyle: "short",
+            timeStyle: "short"
+        });
+    }
+
+    async function loadReviews() {
+        if (loading || stopped || document.hidden) return;
+        loading = true;
+        statusEl.textContent = "جاري تحميل التقييمات...";
+
+        try {
+            const response = await fetch(endpoint, {
+                method: "GET",
+                credentials: "same-origin",
+                headers: { "Accept": "application/json" }
+            });
+
+            let data;
+            try {
+                data = await response.json();
+            } catch {
+                throw new Error("الرد من السيرفر غير متوقع.");
+            }
+
+            if (!response.ok) {
+                throw new Error(
+                    data.detail || "تعذر تحميل التقييمات."
+                );
+            }
+
+            if (!Array.isArray(data)) {
+                throw new Error("بيانات التقييمات غير صحيحة.");
+            }
+
+            listEl.replaceChildren();
+
+            countEl.textContent = data.length + " تقييم";
+
+            if (data.length === 0) {
+                statusEl.textContent = "لسه ما فيه أي تقييمات.";
+                return;
+            }
+
+            statusEl.textContent = "";
+
+            data.forEach(review => {
+                const card = document.createElement("article");
+                card.className = "captain-review-card";
+
+                addText(card, "h3", "رحلة رقم " + review.trip_id);
+                addText(card, "p", "العميل: " + review.customer_name);
+
+                const ratingEl = addText(
+                    card,
+                    "p",
+                    "التقييم: " + review.rating + " نجمة",
+                    "review-rating"
+                );
+
+                if (review.comment) {
+                    addText(card, "p", "التعليق: " + review.comment);
+                }
+
+                addText(card, "p", formatDate(review.created_at), "review-date");
+
+                listEl.appendChild(card);
+            });
+        } catch (error) {
+            statusEl.textContent =
+                error.message || "تعذر تحميل التقييمات.";
+        } finally {
+            loading = false;
+        }
+    }
+
+    document.addEventListener("visibilitychange", function () {
+        if (!document.hidden) loadReviews();
+    });
+
+    window.addEventListener("pagehide", function () {
+        stopped = true;
+    });
+
+    loadReviews();
+})();
+</script>
+
+<script>
+(function () {
+    const toggle = document.getElementById("status-toggle");
+    const messageEl = document.getElementById("status-message");
+    if (!toggle) return;
+
+    const url = toggle.dataset.url;
+    const csrfToken = toggle.dataset.csrf;
+    const nextStatus = toggle.dataset.nextStatus;
+
+    toggle.addEventListener("click", async function () {
+        toggle.disabled = true;
+        messageEl.textContent = "جاري التحديث...";
+        messageEl.className = "";
+
+        try {
+            const response = await fetch(url, {
+                method: "POST",
+                credentials: "same-origin",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRFToken": csrfToken,
+                    "Accept": "application/json"
+                },
+                body: JSON.stringify({ status: nextStatus })
+            });
+
+            let data;
+            try {
+                data = await response.json();
+            } catch {
+                throw new Error("الرد من السيرفر غير متوقع.");
+            }
+
+            if (!response.ok) {
+                const detail = Array.isArray(data?.detail)
+                    ? data.detail.join(" ")
+                    : (data?.detail || "فشل التحديث.");
+                throw new Error(detail);
+            }
+
+            const isNowOnline = toggle.textContent.includes("غير متاح");
+            toggle.textContent = isNowOnline ? "خلّيني متاح" : "خلّيني غير متاح";
+            toggle.className = isNowOnline ? "sg-button" : "sg-button sg-button-secondary";
+            toggle.dataset.nextStatus = isNowOnline ? "ONLINE" : "OFFLINE";
+
+            const span = toggle.closest(".sg-actions").querySelector(".sg-status");
+            if (span) {
+                span.className = isNowOnline ? "sg-status sg-status-danger" : "sg-status sg-status-success";
+                span.textContent = isNowOnline ? "غير متاح" : "متاح";
+            }
+
+            messageEl.textContent = data.message || "تم تحديث الحالة بنجاح.";
+            messageEl.className = "sg-status sg-status-success";
+        } catch (error) {
+            messageEl.textContent = error.message || "فشل تحديث الحالة.";
+            messageEl.className = "sg-status sg-status-danger";
+        } finally {
+            toggle.disabled = false;
+        }
+    });
+})();
+</script>
+{% endblock %}

@@ -6,7 +6,10 @@ from unittest.mock import patch
 from django.urls import reverse
 from django.test import TestCase, SimpleTestCase, override_settings
 
-@override_settings(PAYMOB_HMAC_SECRET="local-test-secret")
+@override_settings(
+    PAYMOB_HMAC_SECRET="local-test-secret",
+    PAYMOB_INTEGRATION_ID="5489313",
+)
 class PaymobWebhookSecurityTests(TestCase):
     def test_rejects_invalid_hmac(self):
         response = self.client.post(

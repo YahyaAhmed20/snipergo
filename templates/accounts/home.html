@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}الرئيسية | SNIPER GO{% endblock %}
+
+{% block content %}
+<section class="sg-hero">
+    <div class="sg-brand" style="justify-content: center;">
+        <div class="sg-brand-mark">SG</div>
+        <span>SNIPER GO</span>
+    </div>
+
+    <h1>انطلق مع SNIPER GO</h1>
+    <p class="lead">نقل ذكي. تقدّم إلى الأمام.</p>
+
+    <div class="sg-hero-grid">
+        <div class="sg-hero-card">
+            <h2>راكب</h2>
+            <p>اطلب رحلة بسرعة وأمان مع كابتنين معتمدين.</p>
+            <a href="{% url 'accounts:login' %}" class="sg-button">تسجيل الدخول</a>
+            <a href="{% url 'accounts:register_customer' %}" class="sg-button sg-button-secondary">إنشاء حساب عميل</a>
+        </div>
+        <div class="sg-hero-card">
+            <h2>كابتن</h2>
+            <p>انضم إلى أسطول SNIPER GO وابدأ في تلقي العروض.</p>
+            <a href="{% url 'accounts:register_captain' %}" class="sg-button">التسجيل كابتن</a>
+        </div>
+    </div>
+
+    <div class="sg-hero-cta">
+        <a href="{% url 'accounts:dashboard' %}" class="sg-button sg-button-secondary">حجز رحلة</a>
+    </div>
+</section>
+{% endblock content %}

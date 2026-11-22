@@ -1,54 +1,35 @@
-
 from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from django.http import HttpResponse
-
-
-def home(request):
-    return HttpResponse(
-        """
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>SNIPER GO</title>
-            <style>
-                body {
-                    margin: 0;
-                    min-height: 100vh;
-                    display: grid;
-                    place-items: center;
-                    background: #101820;
-                    color: white;
-                    font-family: Arial, sans-serif;
-                    text-align: center;
-                }
-                h1 { font-size: 42px; letter-spacing: 4px; }
-                p { color: #aab4bf; }
-                a { color: #7ee787; text-decoration: none; }
-            </style>
-        </head>
-        <body>
-            <main>
-                <h1>SNIPER GO</h1>
-                <p>Smart Mobility. Moving Forward.</p>
-                <p>Platform is running successfully.</p>
-                <a href="/admin/">Administration</a>
-            </main>
-        </body>
-        </html>
-        """,
-        content_type="text/html; charset=utf-8",
-    )
-
+from accounts import views
 
 urlpatterns = [
-    path("", home, name="home"),
+    path("", views.home, name="home"),
+    path("healthz/", lambda r: HttpResponse("ok", content_type="text/plain")),
     path("admin/", admin.site.urls),
     path("accounts/", include("accounts.urls")),
+
+    path(
+        "accounts/3rdparty/signup/",
+        __import__("accounts.social_views", fromlist=["SniperSocialSignupView"])
+        .SniperSocialSignupView.as_view(),
+        name="socialaccount_signup",
+    ),
+    path(
+        "accounts/3rdparty/login/cancelled/",
+        views.social_login_cancelled,
+        name="socialaccount_login_cancelled",
+    ),
+    path(
+        "accounts/3rdparty/login/error/",
+        views.social_login_error,
+        name="socialaccount_login_error",
+    ),
+
+    path("accounts/", include("allauth.urls")),
+
     path("api/trips/", include("trips.api_urls")),
     path("vehicles/", include("vehicles.urls")),
 

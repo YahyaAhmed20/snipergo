@@ -372,6 +372,44 @@ class TripFinancialRecord(models.Model):
 
 
 
+class TripReview(models.Model):
+    customer = models.ForeignKey(
+        "accounts.CustomerProfile",
+        on_delete=models.PROTECT,
+        related_name="trip_reviews",
+    )
+    captain = models.ForeignKey(
+        "accounts.CaptainProfile",
+        on_delete=models.PROTECT,
+        related_name="trip_reviews_received",
+    )
+    trip = models.OneToOneField(
+        Trip,
+        on_delete=models.PROTECT,
+        related_name="review",
+    )
+    rating = models.PositiveSmallIntegerField(
+        validators=[
+            MinValueValidator(1),
+            MaxValueValidator(5),
+        ],
+    )
+    comment = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["captain", "created_at"]),
+            models.Index(fields=["trip"]),
+        ]
+        verbose_name = "Trip Review"
+        verbose_name_plural = "Trip Reviews"
+
+    def __str__(self):
+        return f"Review for Trip #{self.trip_id} - {self.rating} stars"
+
+
 class FinancialTransaction(models.Model):
     class TransactionType(models.TextChoices):
         WALLET_TOPUP = "WALLET_TOPUP", "Wallet Top-up"

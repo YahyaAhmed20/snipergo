@@ -1,25 +1,47 @@
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>SNIPER GO - Register</title>
-</head>
-<body>
-    <h1>SNIPER GO</h1>
-    <h2>Register as {{ account_type }}</h2>
+{% extends "base.html" %}
 
-    <form method="post">
-        {% csrf_token %}
-        {{ form.as_p }}
-        <button type="submit">Create account</button>
-    </form>
+{% block title %}إنشاء حساب | SNIPER GO{% endblock %}
 
-    <p>
-        <a href="{% url 'accounts:login' %}">
-            Already have an account? Log in
+{% block header %}{% endblock %}
+
+{% block content %}
+<div class="sg-auth">
+    <div class="sg-auth-card">
+        <a class="sg-brand" href="{% url 'home' %}">
+            <div class="sg-brand-mark">SG</div>
+            <span>SNIPER GO</span>
         </a>
-    </p>
-</body>
-</html>
+
+        {% if account_type == "Customer" %}
+            <h1>إنشاء حساب راكب</h1>
+            <p>أنشئ حسابك وابدأ رحلاتك مع SNIPER GO.</p>
+            {% url 'google_login' as google_url %}
+        {% elif account_type == "Captain" %}
+            <h1>التسجيل ككابتن</h1>
+            <p>انضم إلى الكباتن وابدأ استقبال الرحلات.</p>
+            {% url 'accounts:captain_google_signup' as google_url %}
+        {% endif %}
+
+        <div class="sg-auth-links">
+            <a href="{{ google_url }}">المتابعة باستخدام Google</a>
+        </div>
+
+        <div class="sg-divider">أو</div>
+
+        <form method="post">
+            {% csrf_token %}
+            {{ form.as_p }}
+            <button type="submit" class="sg-button" style="width: 100%;">
+                إنشاء الحساب
+            </button>
+        </form>
+
+        <div class="sg-auth-links">
+            <a href="{% url 'accounts:login' %}">
+                لديك حساب بالفعل؟ تسجيل الدخول
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

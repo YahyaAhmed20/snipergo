@@ -14,6 +14,7 @@ REQUIRED_DOCUMENTS = {
     CaptainDocument.DocumentType.NATIONAL_ID,
     CaptainDocument.DocumentType.DRIVING_LICENSE,
     CaptainDocument.DocumentType.VEHICLE_LICENSE,
+    CaptainDocument.DocumentType.CRIMINAL_RECORD,
 }
 
 

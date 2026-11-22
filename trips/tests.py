@@ -99,6 +99,7 @@ class AcceptTripTests(TestCase):
             CaptainDocument.DocumentType.NATIONAL_ID,
             CaptainDocument.DocumentType.DRIVING_LICENSE,
             CaptainDocument.DocumentType.VEHICLE_LICENSE,
+            CaptainDocument.DocumentType.CRIMINAL_RECORD,
         ):
             document = CaptainDocument.objects.create(
                 captain=self.captain,
@@ -245,6 +246,27 @@ class AcceptTripTests(TestCase):
 
 
 
+    def test_captain_cannot_start_trip_before_arriving(self):
+        self.prepare_online_captain()
+
+        trip = accept_trip(
+            trip_id=self.trip.pk,
+            captain=self.captain,
+        )
+
+        self.assertEqual(trip.status, Trip.Status.ACCEPTED)
+
+        with self.assertRaises(ValidationError):
+            start_trip(
+                trip_id=trip.pk,
+                captain=self.captain,
+            )
+
+        trip.refresh_from_db()
+        self.assertEqual(trip.status, Trip.Status.ACCEPTED)
+        self.assertIsNone(trip.started_at)
+
+
     def test_trip_can_complete_full_lifecycle(self):
         self.prepare_online_captain()
 
@@ -283,6 +305,10 @@ class AcceptTripTests(TestCase):
         self.assertEqual(trip.status, Trip.Status.COMPLETED)
         self.assertEqual(trip.final_fare, Decimal("100.00"))
         self.assertIsNotNone(trip.completed_at)
+
+
+
+
 
 
     # ===== Rollback when financial record creation fails =====
@@ -440,7 +466,102 @@ class AcceptTripTests(TestCase):
 
 
 
-    def test_insufficient_balance_rolls_back_trip_completion(self):
+
+    def test_online_trip_deducts_commission_once_without_platform_collection(self):
+        self.prepare_online_captain()
+
+        trip = accept_trip(
+            trip_id=self.trip.pk,
+            captain=self.captain,
+        )
+        trip.payment_method = Trip.PaymentMethod.ONLINE
+        trip.save(update_fields=["payment_method"])
+
+        trip = mark_captain_arriving(
+            trip_id=trip.pk,
+            captain=self.captain,
+        )
+        trip = mark_captain_arrived(
+            trip_id=trip.pk,
+            captain=self.captain,
+        )
+        trip = start_trip(
+            trip_id=trip.pk,
+            captain=self.captain,
+        )
+
+        trip.agreed_fare = Decimal("100.00")
+        trip.save(update_fields=["agreed_fare"])
+
+        complete_trip(trip_id=trip.pk, captain=self.captain)
+
+        wallet = CaptainWallet.objects.get(captain=self.captain)
+        record = TripFinancialRecord.objects.get(trip=trip)
+
+        self.assertEqual(record.gross_fare, Decimal("100.00"))
+        self.assertEqual(record.commission_amount, Decimal("15.00"))
+        self.assertEqual(record.captain_earnings, Decimal("85.00"))
+        self.assertEqual(record.collection_status, "PENDING")
+        self.assertEqual(record.commission_status, "COLLECTED")
+
+        self.assertEqual(
+            FinancialTransaction.objects.filter(
+                reference=f"trip-commission:{record.pk}",
+                transaction_type=FinancialTransaction.TransactionType.COMMISSION_DEDUCTION,
+            ).count(),
+            1,
+        )
+
+        self.assertEqual(wallet.balance, Decimal("85.00"))
+        self.assertEqual(wallet.reserved_balance, Decimal("0.00"))
+
+
+
+
+    def test_repeated_online_trip_completion_does_not_deduct_commission_twice(self):
+        self.prepare_online_captain()
+
+        trip = accept_trip(
+            trip_id=self.trip.pk,
+            captain=self.captain,
+        )
+        trip.payment_method = Trip.PaymentMethod.ONLINE
+        trip.save(update_fields=["payment_method"])
+
+        mark_captain_arriving(trip_id=trip.pk, captain=self.captain)
+        mark_captain_arrived(trip_id=trip.pk, captain=self.captain)
+        start_trip(trip_id=trip.pk, captain=self.captain)
+
+        trip.agreed_fare = Decimal("100.00")
+        trip.save(update_fields=["agreed_fare"])
+
+        complete_trip(trip_id=trip.pk, captain=self.captain)
+
+        wallet = CaptainWallet.objects.get(captain=self.captain)
+        balance_after_first_completion = wallet.balance
+        deductions_after_first_completion = FinancialTransaction.objects.filter(
+            reference=f"trip-commission:{trip.financial_record.pk}",
+            transaction_type=FinancialTransaction.TransactionType.COMMISSION_DEDUCTION,
+        ).count()
+
+        with self.assertRaises(ValidationError):
+            complete_trip(trip_id=trip.pk, captain=self.captain)
+
+        wallet.refresh_from_db()
+
+        self.assertEqual(wallet.balance, balance_after_first_completion)
+        self.assertEqual(deductions_after_first_completion, 1)
+        self.assertEqual(
+            FinancialTransaction.objects.filter(
+                reference=f"trip-commission:{trip.financial_record.pk}",
+                transaction_type=FinancialTransaction.TransactionType.COMMISSION_DEDUCTION,
+            ).count(),
+            1,
+        )
+
+
+
+    def test_insufficient_balance_allows_completion_and_records_due_commission(self):
         self.prepare_online_captain()
 
         trip = accept_trip(
@@ -467,29 +588,51 @@ class AcceptTripTests(TestCase):
         wallet.balance = wallet.reserved_balance
         wallet.save(update_fields=["balance", "updated_at"])
 
-        with self.assertRaises(ValidationError):
-            complete_trip(
-                trip_id=trip.pk,
-                captain=self.captain,
-            )
+        completed_trip = complete_trip(
+            trip_id=trip.pk,
+            captain=self.captain,
+        )
 
-        trip.refresh_from_db()
+        completed_trip.refresh_from_db()
         wallet.refresh_from_db()
 
-        self.assertEqual(trip.status, Trip.Status.IN_PROGRESS)
-        self.assertIsNone(trip.completed_at)
-        self.assertIsNone(trip.final_fare)
+        self.assertEqual(
+            completed_trip.status,
+            Trip.Status.COMPLETED,
+        )
+        self.assertIsNotNone(completed_trip.completed_at)
+        self.assertEqual(
+            completed_trip.final_fare,
+            Decimal("200.00"),
+        )
+
+        record = TripFinancialRecord.objects.get(trip=completed_trip)
+
+        self.assertEqual(
+            record.commission_status,
+            TripFinancialRecord.CommissionStatus.PENDING,
+        )
 
         self.assertEqual(wallet.balance, Decimal("15.00"))
         self.assertEqual(wallet.reserved_balance, Decimal("15.00"))
 
-        self.assertFalse(
-            TripFinancialRecord.objects.filter(trip=trip).exists()
+        due_transaction = FinancialTransaction.objects.get(
+            reference=f"trip-commission-due:{record.pk}",
         )
+
+        self.assertEqual(
+            due_transaction.transaction_type,
+            FinancialTransaction.TransactionType.COMMISSION_DUE,
+        )
+        self.assertEqual(due_transaction.financial_record_id, record.pk)
+        self.assertEqual(due_transaction.amount, record.commission_amount)
 
         self.assertFalse(
             FinancialTransaction.objects.filter(
-                reference=f"trip-commission:{trip.pk}",
+                reference=f"trip-commission:{record.pk}",
+                transaction_type=(
+                    FinancialTransaction.TransactionType.COMMISSION_DEDUCTION
+                ),
             ).exists()
         )
 
@@ -720,6 +863,73 @@ class AcceptTripTests(TestCase):
 
 
 
+
+
+    def test_captain_cannot_complete_trip_before_start(self):
+        self.prepare_online_captain()
+
+        trip = accept_trip(
+            trip_id=self.trip.pk,
+            captain=self.captain,
+        )
+
+        with self.assertRaises(ValidationError):
+            complete_trip(
+                trip_id=trip.pk,
+                captain=self.captain,
+            )
+
+        trip.refresh_from_db()
+        self.assertEqual(trip.status, Trip.Status.ACCEPTED)
+        self.assertIsNone(trip.completed_at)
+
+
+
+
+    def test_captain_cannot_arrive_before_marking_arriving(self):
+        self.prepare_online_captain()
+
+        trip = accept_trip(
+            trip_id=self.trip.pk,
+            captain=self.captain,
+        )
+
+        with self.assertRaises(ValidationError):
+            mark_captain_arrived(
+                trip_id=trip.pk,
+                captain=self.captain,
+            )
+
+        trip.refresh_from_db()
+        self.assertEqual(trip.status, Trip.Status.ACCEPTED)
+
+
+
+
+    def test_captain_cannot_start_trip_before_arrived(self):
+        self.prepare_online_captain()
+
+        trip = accept_trip(
+            trip_id=self.trip.pk,
+            captain=self.captain,
+        )
+        trip = mark_captain_arriving(
+            trip_id=trip.pk,
+            captain=self.captain,
+        )
+
+        self.assertEqual(trip.status, Trip.Status.ARRIVING)
+
+        with self.assertRaises(ValidationError):
+            start_trip(
+                trip_id=trip.pk,
+                captain=self.captain,
+            )
+
+        trip.refresh_from_db()
+        self.assertEqual(trip.status, Trip.Status.ARRIVING)
+        self.assertIsNone(trip.started_at)
+
     def test_support_can_cancel_trip_in_progress(self):
         self.prepare_online_captain()
         accept_trip(
@@ -813,6 +1023,34 @@ class TripAPITests(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 403)
+        
+        
+        
+        
+    def test_captain_cannot_create_trip(self):
+        captain_user, _ = self.create_approved_captain()
+
+        self.api_client.force_authenticate(user=captain_user)
+        trips_before = Trip.objects.count()
+
+        response = self.api_client.post(
+            "/api/trips/create/",
+            {
+                "pickup_address": "Suez",
+                "pickup_latitude": "29.9668",
+                "pickup_longitude": "32.5498",
+                "destination_address": "Port Tawfik",
+                "destination_latitude": "29.9500",
+                "destination_longitude": "32.5700",
+                "payment_method": "CASH",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(Trip.objects.count(), trips_before)
+
+
 
     @patch(
         "trips.serializers.calculate_road_distance_km",
@@ -928,6 +1166,41 @@ class TripAPITests(TestCase):
             Trip.objects.filter(customer=self.customer).count(),
             0,
         )
+
+
+
+
+    @patch("trips.serializers.calculate_road_distance_km")
+    def test_customer_cannot_create_trip_outside_suez_geofence(
+        self, mocked_road_distance
+    ):
+        self.api_client.force_authenticate(user=self.customer_user)
+
+        response = self.api_client.post(
+            "/api/trips/create/",
+            {
+                "pickup_address": "Suez",
+                "pickup_latitude": "29.9668",
+                "pickup_longitude": "32.5498",
+                "destination_address": "Outside Suez",
+                "destination_latitude": "29.90",
+                "destination_longitude": "32.90",
+                "payment_method": "CASH",
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            400,
+            msg=f"API response: {response.data}",
+        )
+        mocked_road_distance.assert_not_called()
+        self.assertEqual(
+            Trip.objects.filter(customer=self.customer).count(),
+            0,
+        )
+
     def test_customer_cannot_view_another_customer_trip(self):
         other_user = User.objects.create_user(
             username="other_customer",
@@ -973,6 +1246,49 @@ class TripAPITests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["status"], "REQUESTED")
+
+
+
+
+    def test_customer_sees_recent_captain_location_on_active_trip(self):
+        captain_user, captain = self.create_approved_captain(
+            username="live_tracking_captain"
+        )
+        captain.current_latitude = Decimal("29.966800")
+        captain.current_longitude = Decimal("32.549800")
+        captain.location_updated_at = timezone.now()
+        captain.save(
+            update_fields=[
+                "current_latitude",
+                "current_longitude",
+                "location_updated_at",
+            ]
+        )
+
+        trip = Trip.objects.create(
+            customer=self.customer,
+            captain=captain,
+            status=Trip.Status.ACCEPTED,
+            pickup_address="Suez",
+            pickup_latitude=Decimal("29.966800"),
+            pickup_longitude=Decimal("32.549800"),
+            destination_address="Port Tawfik",
+            destination_latitude=Decimal("29.950000"),
+            destination_longitude=Decimal("32.570000"),
+        )
+
+        self.api_client.force_authenticate(user=self.customer_user)
+        response = self.api_client.get(f"/api/trips/{trip.pk}/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.data.get("captain_location"),
+            {
+                "latitude": "29.966800",
+                "longitude": "32.549800",
+                "updated_at": captain.location_updated_at.isoformat(),
+            },
+        )
 
 
     def test_unrelated_user_cannot_view_trip(self):
@@ -1034,6 +1350,7 @@ class TripAPITests(TestCase):
             CaptainDocument.DocumentType.NATIONAL_ID,
             CaptainDocument.DocumentType.DRIVING_LICENSE,
             CaptainDocument.DocumentType.VEHICLE_LICENSE,
+            CaptainDocument.DocumentType.CRIMINAL_RECORD,
         }
 
         for document_type in required_documents:
@@ -1065,6 +1382,149 @@ class TripAPITests(TestCase):
 
         return captain_user, captain
 
+
+
+    def test_customer_cannot_confirm_cash_collection_through_api(self):
+        from trips.services.finance import create_trip_financial_record
+
+        _, captain = self.create_approved_captain()
+
+        trip = Trip.objects.create(
+            customer=self.customer,
+            captain=captain,
+            pickup_address="Suez",
+            pickup_latitude="29.9668",
+            pickup_longitude="32.5498",
+            destination_address="Port Tawfik",
+            destination_latitude="29.9500",
+            destination_longitude="32.5700",
+            status=Trip.Status.COMPLETED,
+            payment_method=Trip.PaymentMethod.CASH,
+            agreed_fare=Decimal("100.00"),
+            final_fare=Decimal("100.00"),
+            commission_percentage=Decimal("15.00"),
+        )
+        record = create_trip_financial_record(trip_id=trip.pk)
+
+        self.api_client.force_authenticate(user=self.customer_user)
+        response = self.api_client.post(
+            f"/api/trips/{trip.pk}/cash-collection/confirm/",
+            {},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        record.refresh_from_db()
+        self.assertEqual(record.collection_status, "PENDING")
+
+    def test_cash_collection_api_rejects_online_trip(self):
+        from trips.services.finance import create_trip_financial_record
+
+        captain_user, captain = self.create_approved_captain(
+            username="online_trip_captain"
+        )
+
+        trip = Trip.objects.create(
+            customer=self.customer,
+            captain=captain,
+            pickup_address="Suez",
+            pickup_latitude="29.9668",
+            pickup_longitude="32.5498",
+            destination_address="Port Tawfik",
+            destination_latitude="29.9500",
+            destination_longitude="32.5700",
+            status=Trip.Status.COMPLETED,
+            payment_method=Trip.PaymentMethod.ONLINE,
+            agreed_fare=Decimal("100.00"),
+            final_fare=Decimal("100.00"),
+            commission_percentage=Decimal("15.00"),
+        )
+        record = create_trip_financial_record(trip_id=trip.pk)
+
+        self.api_client.force_authenticate(user=captain_user)
+        response = self.api_client.post(
+            f"/api/trips/{trip.pk}/cash-collection/confirm/",
+            {},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        record.refresh_from_db()
+        self.assertEqual(record.collection_status, "PENDING")
+
+
+
+    def test_customer_cannot_access_captain_my_trips_api(self):
+        self.api_client.force_authenticate(user=self.customer_user)
+
+        response = self.api_client.get("/api/trips/my-trips/")
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_captain_my_trips_includes_pending_cash_collection(self):
+        from trips.services.finance import create_trip_financial_record
+
+        captain_user, captain = self.create_approved_captain(
+            username="my_trips_captain"
+        )
+
+        trip = Trip.objects.create(
+            customer=self.customer,
+            captain=captain,
+            pickup_address="Suez",
+            pickup_latitude="29.9668",
+            pickup_longitude="32.5498",
+            destination_address="Port Tawfik",
+            destination_latitude="29.9500",
+            destination_longitude="32.5700",
+            status=Trip.Status.COMPLETED,
+            payment_method=Trip.PaymentMethod.CASH,
+            agreed_fare=Decimal("100.00"),
+            final_fare=Decimal("100.00"),
+            commission_percentage=Decimal("15.00"),
+        )
+        create_trip_financial_record(trip_id=trip.pk)
+
+        self.api_client.force_authenticate(user=captain_user)
+        response = self.api_client.get("/api/trips/my-trips/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["id"], trip.pk)
+        self.assertEqual(response.data[0]["status"], "COMPLETED")
+
+    def test_captain_can_confirm_cash_collection_through_api(self):
+        from trips.services.finance import create_trip_financial_record
+
+        captain_user, captain = self.create_approved_captain()
+
+        trip = Trip.objects.create(
+            customer=self.customer,
+            captain=captain,
+            pickup_address="Suez",
+            pickup_latitude="29.9668",
+            pickup_longitude="32.5498",
+            destination_address="Port Tawfik",
+            destination_latitude="29.9500",
+            destination_longitude="32.5700",
+            status=Trip.Status.COMPLETED,
+            payment_method=Trip.PaymentMethod.CASH,
+            agreed_fare=Decimal("100.00"),
+            final_fare=Decimal("100.00"),
+            commission_percentage=Decimal("15.00"),
+        )
+
+        create_trip_financial_record(trip_id=trip.pk)
+
+        self.api_client.force_authenticate(user=captain_user)
+        response = self.api_client.post(
+            f"/api/trips/{trip.pk}/cash-collection/confirm/",
+            {},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["collection_status"], "COLLECTED")
 
     def test_approved_online_captain_can_accept_trip(self):
         captain_user, captain = self.create_approved_captain()
@@ -1149,7 +1609,6 @@ class TripAPITests(TestCase):
             destination_latitude="29.9500",
             destination_longitude="32.5700",
             estimated_fare=Decimal("100.00"),
-            agreed_fare=Decimal("75.00"),
         )
 
         self.api_client.force_authenticate(user=captain_user)
@@ -1181,7 +1640,9 @@ class TripAPITests(TestCase):
             trip.refresh_from_db()
             self.assertEqual(trip.status, expected_status)
 
-        self.assertEqual(str(trip.final_fare), "75.00")
+        # Direct accept sets agreed_fare = estimated_fare (no negotiation in
+        # this path); completion carries that fare through to final_fare.
+        self.assertEqual(str(trip.final_fare), "100.00")
         self.assertIsNotNone(trip.accepted_at)
         self.assertEqual(
             trip.commission_percentage,
@@ -1505,6 +1966,16 @@ class TripAPITests(TestCase):
             ]
         )
 
+        TripPricingConfig.objects.create(
+            city="Suez",
+            base_fare=Decimal("10.00"),
+            price_per_km=Decimal("5.00"),
+            minimum_fare=Decimal("15.00"),
+            maximum_fare=Decimal("100.00"),
+            negotiation_percent=Decimal("20.00"),
+            is_active=True,
+        )
+
         Trip.objects.create(
             customer=self.customer,
             pickup_address="Suez",
@@ -1534,10 +2005,14 @@ class TripAPITests(TestCase):
             "destination_longitude",
             "payment_method",
             "estimated_fare",
+            "minimum_offer",
+            "maximum_offer",
             "requested_at",
         }
 
         self.assertEqual(set(item.keys()), expected_fields)
+        self.assertEqual(Decimal(str(item["minimum_offer"])), Decimal("60.00"))
+        self.assertEqual(Decimal(str(item["maximum_offer"])), Decimal("90.00"))
         self.assertNotIn("customer_username", item)
         self.assertNotIn("captain_username", item)
         self.assertNotIn("cancellation_reason", item)
@@ -1681,6 +2156,109 @@ class TripAPITests(TestCase):
             )
 
         self.assertEqual(CaptainOffer.objects.filter(trip=trip).count(), 1)
+
+
+
+
+    def test_expired_pending_offer_does_not_block_new_offer(self):
+        _, captain = self.create_approved_captain(
+            username="offer_expiry_replacement_captain",
+        )
+
+        TripPricingConfig.objects.create(
+            city="Suez",
+            base_fare=Decimal("10.00"),
+            price_per_km=Decimal("5.00"),
+            minimum_fare=Decimal("15.00"),
+            maximum_fare=Decimal("100.00"),
+            is_active=True,
+        )
+
+        trip = Trip.objects.create(
+            customer=self.customer,
+            pickup_address="Suez",
+            pickup_latitude="29.9668",
+            pickup_longitude="32.5498",
+            destination_address="Port Tawfik",
+            destination_latitude="29.9500",
+            destination_longitude="32.5700",
+            estimated_fare=Decimal("50.00"),
+        )
+
+        old_offer = create_captain_offer(
+            trip_id=trip.pk,
+            captain=captain,
+            amount="45.00",
+        )
+        old_offer.expires_at = timezone.now() - timedelta(minutes=1)
+        old_offer.save(update_fields=["expires_at"])
+
+        new_offer = create_captain_offer(
+            trip_id=trip.pk,
+            captain=captain,
+            amount="46.00",
+        )
+
+        old_offer.refresh_from_db()
+
+        self.assertEqual(old_offer.status, CaptainOffer.Status.EXPIRED)
+        self.assertEqual(new_offer.status, CaptainOffer.Status.PENDING)
+        self.assertNotEqual(old_offer.pk, new_offer.pk)
+
+
+
+
+    def test_expired_offer_remains_expired_if_replacement_creation_fails(self):
+        _, captain = self.create_approved_captain(
+            username="offer_expiry_failure_captain",
+        )
+
+        TripPricingConfig.objects.create(
+            city="Suez",
+            base_fare=Decimal("10.00"),
+            price_per_km=Decimal("5.00"),
+            minimum_fare=Decimal("15.00"),
+            maximum_fare=Decimal("100.00"),
+            is_active=True,
+        )
+
+        trip = Trip.objects.create(
+            customer=self.customer,
+            pickup_address="Suez",
+            pickup_latitude="29.9668",
+            pickup_longitude="32.5498",
+            destination_address="Port Tawfik",
+            destination_latitude="29.9500",
+            destination_longitude="32.5700",
+            estimated_fare=Decimal("50.00"),
+        )
+
+        old_offer = create_captain_offer(
+            trip_id=trip.pk,
+            captain=captain,
+            amount="45.00",
+        )
+        old_offer.expires_at = timezone.now() - timedelta(minutes=1)
+        old_offer.save(update_fields=["expires_at"])
+
+        with patch.object(
+            CaptainOffer.objects,
+            "create",
+            side_effect=RuntimeError("Simulated offer creation failure"),
+        ):
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "Simulated offer creation failure",
+            ):
+                create_captain_offer(
+                    trip_id=trip.pk,
+                    captain=captain,
+                    amount="46.00",
+                )
+
+        old_offer.refresh_from_db()
+        self.assertEqual(old_offer.status, CaptainOffer.Status.EXPIRED)
+
 
 
     def test_customer_can_accept_captain_offer(self):
@@ -1866,6 +2444,96 @@ class TripAPITests(TestCase):
         self.assertEqual(response.data[0]["captain_username"], captain.user.username)
         self.assertEqual(response.data[0]["amount"], "45.00")
 
+
+
+
+    def test_customer_does_not_see_captain_location_after_trip_completion(self):
+        _, captain = self.create_approved_captain(
+            username="completed_tracking_captain"
+        )
+        captain.current_latitude = Decimal("29.966800")
+        captain.current_longitude = Decimal("32.549800")
+        captain.location_updated_at = timezone.now()
+        captain.save(
+            update_fields=[
+                "current_latitude",
+                "current_longitude",
+                "location_updated_at",
+            ]
+        )
+
+        trip = Trip.objects.create(
+            customer=self.customer,
+            captain=captain,
+            status=Trip.Status.COMPLETED,
+            pickup_address="Suez",
+            pickup_latitude=Decimal("29.966800"),
+            pickup_longitude=Decimal("32.549800"),
+            destination_address="Port Tawfik",
+            destination_latitude=Decimal("29.950000"),
+            destination_longitude=Decimal("32.570000"),
+        )
+
+        self.api_client.force_authenticate(user=self.customer_user)
+        response = self.api_client.get(f"/api/trips/{trip.pk}/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.data["captain_location"])
+
+
+
+
+
+    def test_customer_does_not_see_location_before_captain_is_assigned(self):
+        trip = Trip.objects.create(
+            customer=self.customer,
+            status=Trip.Status.REQUESTED,
+            pickup_address="Suez",
+            pickup_latitude=Decimal("29.966800"),
+            pickup_longitude=Decimal("32.549800"),
+            destination_address="Port Tawfik",
+            destination_latitude=Decimal("29.950000"),
+            destination_longitude=Decimal("32.570000"),
+        )
+
+        self.api_client.force_authenticate(user=self.customer_user)
+        response = self.api_client.get(f"/api/trips/{trip.pk}/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.data["captain_location"])
+
+    def test_customer_does_not_see_stale_captain_location(self):
+        _, captain = self.create_approved_captain(
+            username="stale_tracking_captain"
+        )
+        captain.current_latitude = Decimal("29.966800")
+        captain.current_longitude = Decimal("32.549800")
+        captain.location_updated_at = timezone.now() - timedelta(minutes=3)
+        captain.save(
+            update_fields=[
+                "current_latitude",
+                "current_longitude",
+                "location_updated_at",
+            ]
+        )
+
+        trip = Trip.objects.create(
+            customer=self.customer,
+            captain=captain,
+            status=Trip.Status.ACCEPTED,
+            pickup_address="Suez",
+            pickup_latitude=Decimal("29.966800"),
+            pickup_longitude=Decimal("32.549800"),
+            destination_address="Port Tawfik",
+            destination_latitude=Decimal("29.950000"),
+            destination_longitude=Decimal("32.570000"),
+        )
+
+        self.api_client.force_authenticate(user=self.customer_user)
+        response = self.api_client.get(f"/api/trips/{trip.pk}/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.data["captain_location"])
 
     def test_another_customer_cannot_view_trip_offers(self):
         trip = Trip.objects.create(
@@ -2583,7 +3251,7 @@ class TripAPITests(TestCase):
 
         self.assertEqual(trip.status, Trip.Status.REQUESTED)
         self.assertIsNone(trip.captain_id)
-        self.assertIsNone(trip.vehicle_id)          # 👈 الإضافة الجديدة
+        self.assertIsNone(trip.vehicle_id)          # ðŸ‘ˆ Ø§Ù„Ø¥Ø¶Ø§ÙØ© Ø§Ù„Ø¬Ø¯ÙŠØ¯Ø©
         self.assertEqual(offer.status, CaptainOffer.Status.PENDING)
         self.assertEqual(wallet.balance, Decimal("1.00"))
         self.assertEqual(wallet.reserved_balance, Decimal("0.00"))
@@ -2635,3 +3303,73 @@ class TripAPITests(TestCase):
         trip.refresh_from_db()
         self.assertEqual(trip.status, Trip.Status.REQUESTED)
         self.assertIsNone(trip.captain_id)
+
+
+class AddressSearchAPITests(TestCase):
+    """Authorization, validation, and failure handling for address search."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.customer_user = User.objects.create_user(
+            username="addr_customer",
+            password="test-password-123",
+            role=User.Role.CUSTOMER,
+        )
+        CustomerProfile.objects.create(
+            user=self.customer_user,
+            phone_number="01000000010",
+        )
+        self.url = "/api/trips/address-search/"
+
+    def test_anonymous_user_is_rejected(self):
+        response = self.client.get(self.url, {"q": "بورتوفيق"})
+        self.assertEqual(response.status_code, 403)
+
+    def test_non_customer_is_rejected(self):
+        captain_user = User.objects.create_user(
+            username="addr_captain",
+            password="test-password-123",
+            role=User.Role.CAPTAIN,
+        )
+        self.client.force_authenticate(user=captain_user)
+        response = self.client.get(self.url, {"q": "بورتوفيق"})
+        self.assertEqual(response.status_code, 403)
+
+    def test_short_query_is_rejected(self):
+        self.client.force_authenticate(user=self.customer_user)
+        response = self.client.get(self.url, {"q": "ab"})
+        self.assertEqual(response.status_code, 400)
+
+    def test_empty_query_is_rejected(self):
+        self.client.force_authenticate(user=self.customer_user)
+        response = self.client.get(self.url, {"q": ""})
+        self.assertEqual(response.status_code, 400)
+
+    def test_oversized_query_is_rejected(self):
+        self.client.force_authenticate(user=self.customer_user)
+        response = self.client.get(self.url, {"q": "x" * 151})
+        self.assertEqual(response.status_code, 400)
+
+    @patch("trips.api_views.settings")
+    def test_missing_api_key_returns_empty_features(self, mock_settings):
+        mock_settings.GOOGLE_PLACES_API_KEY = ""
+        self.client.force_authenticate(user=self.customer_user)
+        response = self.client.get(self.url, {"q": "بورتوفيق"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["features"], [])
+        self.assertEqual(response.data["provider"], "unavailable")
+
+    @patch("trips.api_views.requests.post")
+    @patch("trips.api_views.settings")
+    def test_external_failure_returns_empty_features(
+        self, mock_settings, mock_post
+    ):
+        import requests
+
+        mock_settings.GOOGLE_PLACES_API_KEY = "fake-key"
+        mock_post.side_effect = requests.RequestException("boom")
+        self.client.force_authenticate(user=self.customer_user)
+        response = self.client.get(self.url, {"q": "بورتوفيق"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["features"], [])
+        self.assertEqual(response.data["provider"], "unavailable")

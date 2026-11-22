@@ -1,0 +1,49 @@
+
+{% extends "socialaccount/base_entrance.html" %}
+{% load i18n %}
+{% load allauth %}
+
+{% block head_title %}
+    {% if process == "connect" %}
+        ربط حساب Google | SNIPER GO
+    {% else %}
+        تسجيل الدخول باستخدام Google | SNIPER GO
+    {% endif %}
+{% endblock head_title %}
+
+{% block content %}
+<div class="sg-auth">
+    <div class="sg-auth-card">
+        <a class="sg-brand" href="{% url 'home' %}">
+            <div class="sg-brand-mark">SG</div>
+            <span>SNIPER GO</span>
+        </a>
+
+        {% if process == "connect" %}
+            <h1>ربط حساب Google</h1>
+            <p>أنت على وشك ربط حسابك بحساب Google.</p>
+        {% else %}
+            <h1>تسجيل الدخول باستخدام Google</h1>
+            <p>
+                أنت على وشك تسجيل الدخول إلى SNIPER GO
+                باستخدام حساب Google الخاص بك.
+            </p>
+        {% endif %}
+
+        {% element form method="post" no_visible_fields=True %}
+            {% slot actions %}
+                {% csrf_token %}
+                {% element button type="submit" %}
+                    متابعة إلى Google
+                {% endelement %}
+            {% endslot %}
+        {% endelement %}
+
+        <div class="sg-auth-links">
+            <a href="{% url 'accounts:login' %}">
+                العودة إلى تسجيل الدخول
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock content %}

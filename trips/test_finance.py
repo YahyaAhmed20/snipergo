@@ -284,7 +284,7 @@ class TripFinancialRecordTests(TestCase):
 
 
 
-    def test_repeated_cash_collection_confirmation_is_idempotent(self):
+    def test_repeated_cash_collection_confirmation_keeps_one_financial_record(self):
         record = create_trip_financial_record(
             trip_id=self.trip.pk,
         )

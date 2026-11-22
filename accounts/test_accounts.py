@@ -75,6 +75,7 @@ class ReviewServiceTests(TestCase):
             CaptainDocument.DocumentType.NATIONAL_ID,
             CaptainDocument.DocumentType.DRIVING_LICENSE,
             CaptainDocument.DocumentType.VEHICLE_LICENSE,
+            CaptainDocument.DocumentType.CRIMINAL_RECORD,
         ):
             self.create_document(document_type)
 
@@ -102,7 +103,74 @@ class ReviewServiceTests(TestCase):
             self.captain.approval_status,
             CaptainProfile.ApprovalStatus.PENDING,
         )
+        
+        
+    def test_captain_cannot_be_approved_with_rejected_criminal_record(self):
+        for document_type in (
+            CaptainDocument.DocumentType.NATIONAL_ID,
+            CaptainDocument.DocumentType.DRIVING_LICENSE,
+            CaptainDocument.DocumentType.VEHICLE_LICENSE,
+        ):
+            self.create_document(document_type)
 
+        self.create_document(
+            CaptainDocument.DocumentType.CRIMINAL_RECORD,
+            status=CaptainDocument.ReviewStatus.REJECTED,
+        )
+
+        with self.assertRaises(ValidationError):
+            approve_captain(self.captain, self.reviewer)
+
+        self.captain.refresh_from_db()
+        self.assertEqual(
+            self.captain.approval_status,
+            CaptainProfile.ApprovalStatus.PENDING,
+        )
+        
+        
+    def test_captain_cannot_be_approved_without_criminal_record(self):
+        for document_type in (
+            CaptainDocument.DocumentType.NATIONAL_ID,
+            CaptainDocument.DocumentType.DRIVING_LICENSE,
+            CaptainDocument.DocumentType.VEHICLE_LICENSE,
+        ):
+            self.create_document(document_type)
+
+        with self.assertRaises(ValidationError):
+            approve_captain(self.captain, self.reviewer)
+
+        self.captain.refresh_from_db()
+        self.assertEqual(
+            self.captain.approval_status,
+            CaptainProfile.ApprovalStatus.PENDING,
+        )
+
+
+
+
+    def test_captain_cannot_be_approved_with_pending_criminal_record(self):
+        for document_type in (
+            CaptainDocument.DocumentType.NATIONAL_ID,
+            CaptainDocument.DocumentType.DRIVING_LICENSE,
+            CaptainDocument.DocumentType.VEHICLE_LICENSE,
+        ):
+            self.create_document(document_type)
+
+        self.create_document(
+            CaptainDocument.DocumentType.CRIMINAL_RECORD,
+            status=CaptainDocument.ReviewStatus.PENDING,
+        )
+
+        with self.assertRaises(ValidationError):
+            approve_captain(self.captain, self.reviewer)
+
+        self.captain.refresh_from_db()
+        self.assertEqual(
+            self.captain.approval_status,
+            CaptainProfile.ApprovalStatus.PENDING,
+        )
+    
+    
     def test_captain_cannot_be_approved_with_expired_document(self):
         self.create_required_documents()
         document = self.captain.documents.get(
@@ -330,6 +398,57 @@ class ReviewServiceTests(TestCase):
 
         set_captain_online_status(self.captain, True)
         set_captain_online_status(self.captain, False)
+
+        self.captain.refresh_from_db()
+        self.assertEqual(
+            self.captain.operational_status,
+            CaptainProfile.OperationalStatus.OFFLINE,
+        )
+        
+        
+    def test_captain_with_zero_balance_cannot_go_online(self):
+        self.create_required_documents()
+        self.captain.approval_status = (
+            CaptainProfile.ApprovalStatus.APPROVED
+        )
+        self.captain.save(update_fields=["approval_status"])
+
+        vehicle = self.create_vehicle()
+        vehicle.approval_status = Vehicle.ApprovalStatus.APPROVED
+        vehicle.save(update_fields=["approval_status"])
+
+        wallet = CaptainWallet.objects.get(captain=self.captain)
+        wallet.balance = Decimal("0.00")
+        wallet.reserved_balance = Decimal("0.00")
+        wallet.save(update_fields=["balance", "reserved_balance"])
+
+        with self.assertRaises(ValidationError):
+            set_captain_online_status(self.captain, True)
+
+        self.captain.refresh_from_db()
+        self.assertEqual(
+            self.captain.operational_status,
+            CaptainProfile.OperationalStatus.OFFLINE,
+        )
+
+    def test_captain_with_fully_reserved_balance_cannot_go_online(self):
+        self.create_required_documents()
+        self.captain.approval_status = (
+            CaptainProfile.ApprovalStatus.APPROVED
+        )
+        self.captain.save(update_fields=["approval_status"])
+
+        vehicle = self.create_vehicle()
+        vehicle.approval_status = Vehicle.ApprovalStatus.APPROVED
+        vehicle.save(update_fields=["approval_status"])
+
+        wallet = CaptainWallet.objects.get(captain=self.captain)
+        wallet.balance = Decimal("100.00")
+        wallet.reserved_balance = Decimal("100.00")
+        wallet.save(update_fields=["balance", "reserved_balance"])
+
+        with self.assertRaises(ValidationError):
+            set_captain_online_status(self.captain, True)
 
         self.captain.refresh_from_db()
         self.assertEqual(
@@ -973,3 +1092,34 @@ class CustomerDashboardTripTrackingTests(TestCase):
         ):
             with self.subTest(element_id=element_id):
                 self.assertContains(response, f'id="{element_id}"')
+
+    def test_customer_dashboard_loads_leaflet_assets(self):
+        customer = User.objects.create_user(
+            username="customer_dashboard_leaflet",
+            password="TestPassword123!",
+            role=User.Role.CUSTOMER,
+        )
+        self.client.force_login(customer)
+
+        response = self.client.get(reverse("accounts:dashboard"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "leaflet@1.9.4/dist/leaflet.css")
+        self.assertContains(response, "leaflet@1.9.4/dist/leaflet.js")
+
+
+class HealthEndpointTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+
+    def test_healthz_endpoint_returns_200(self):
+        response = self.client.get("/healthz/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b"ok")
+        self.assertEqual(response["Content-Type"], "text/plain")
+
+    def test_healthz_endpoint_no_auth_required(self):
+        response = self.client.get("/healthz/")
+
+        self.assertEqual(response.status_code, 200)

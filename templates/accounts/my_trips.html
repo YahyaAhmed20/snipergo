@@ -1,0 +1,749 @@
+{% extends "base.html" %}
+
+{% block title %}رحلاتي | SNIPER GO{% endblock %}
+
+{% block extra_head %}
+<style>
+        body {
+            margin: 0;
+            background: #f3f5f8;
+            color: #182230;
+            font-family: Tahoma, Arial, sans-serif;
+        }
+        .trips-page {
+            width: min(1100px, calc(100% - 32px));
+            margin: 30px auto;
+        }
+        .trips-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-bottom: 24px;
+        }
+        .trips-header h1 { margin: 0 0 8px; }
+        .muted { color: #667085; }
+        .trip-card {
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 16px;
+            padding: 22px;
+            margin-bottom: 16px;
+            box-shadow: 0 6px 22px rgba(16,24,40,.05);
+        }
+        .trip-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            padding-bottom: 16px;
+            border-bottom: 1px solid #eaecf0;
+            margin-bottom: 18px;
+        }
+        .trip-number { font-weight: 800; font-size: 17px; }
+        .trip-status {
+            display: inline-block;
+            padding: 7px 12px;
+            border-radius: 999px;
+            font-size: 13px;
+            font-weight: 700;
+            background: #f2f4f7;
+            color: #344054;
+        }
+        .status-COMPLETED { background: #dcfae6; color: #027a48; }
+        .status-CANCELLED, .status-EXPIRED { background: #fee4e2; color: #b42318; }
+        .status-IN_PROGRESS { background: #dbeafe; color: #1d4ed8; }
+        .status-ACCEPTED, .status-ARRIVING, .status-ARRIVED { background: #fef0c7; color: #93370d; }
+        .trip-route {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 18px;
+        }
+        .route-item { min-width: 0; }
+        .route-label {
+            color: #667085;
+            font-size: 13px;
+            margin-bottom: 7px;
+        }
+        .route-value { font-weight: 700; line-height: 1.7; overflow-wrap: anywhere; }
+        .trip-details {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 14px;
+            margin-top: 20px;
+            padding-top: 16px;
+            border-top: 1px solid #eaecf0;
+        }
+        .detail-label { color: #667085; font-size: 13px; margin-bottom: 6px; }
+        .detail-value { font-weight: 700; overflow-wrap: anywhere; }
+        .trip-cancellation {
+            margin-top: 16px;
+            padding: 12px;
+            border-radius: 10px;
+            background: #fef3f2;
+            color: #b42318;
+        }
+        .trip-actions { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+        .trip-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 42px;
+            padding: 10px 16px;
+            border: 1px solid #d0d5dd;
+            border-radius: 10px;
+            text-decoration: none;
+            color: #344054;
+            font-weight: 700;
+        }
+        .empty-state {
+            background: #fff;
+            border: 1px dashed #d0d5dd;
+            border-radius: 16px;
+            padding: 42px 20px;
+            text-align: center;
+        }
+        .empty-state h2 { margin-top: 0; }
+
+        /* ✨ تنسيق قسم العروض */
+        .offers-section {
+            margin-top: 22px;
+            padding-top: 18px;
+            border-top: 1px solid #eaecf0;
+        }
+
+        .offers-heading {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+
+        .offers-heading h3 {
+            margin: 0;
+        }
+
+        .offers-list {
+            display: grid;
+            gap: 12px;
+        }
+
+        .offer-card {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 14px;
+            flex-wrap: wrap;
+            padding: 16px;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            background: #fafbfc;
+        }
+
+        .offer-price {
+            font-size: 19px;
+            font-weight: 800;
+            color: #1570ef;
+        }
+
+        .choose-offer-btn {
+            border: 0;
+            border-radius: 9px;
+            padding: 11px 16px;
+            background: #182230;
+            color: white;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .choose-offer-btn:disabled {
+            opacity: .5;
+            cursor: not-allowed;
+        }
+
+        @media (max-width: 650px) {
+            .trips-page { width: calc(100% - 24px); margin: 20px auto; }
+            .trip-card { padding: 17px; }
+            .trip-route { grid-template-columns: 1fr; gap: 14px; }
+            .trip-details { grid-template-columns: 1fr 1fr; }
+        }
+        @media (max-width: 600px) {
+            .offer-card {
+                align-items: stretch;
+                flex-direction: column;
+            }
+        }
+        @media (max-width: 390px) {
+            .trip-details { grid-template-columns: 1fr; }
+        }
+    </style>
+{% endblock %}
+
+{% block header %}
+<header class="trips-header">
+        <div>
+            <h1>رحلاتي</h1>
+            <p class="muted">تابع رحلاتك الحالية والسابقة في SNIPER GO.</p>
+        </div>
+        <div class="trip-actions">
+            <a class="trip-link" href="{% url 'accounts:dashboard' %}">احجز رحلة</a>
+            <a class="trip-link" href="{% url 'accounts:customer_profile' %}">حسابي</a>
+        </div>
+    </header>
+{% endblock %}
+
+{% block content %}
+<!-- ✨ form مخفي لضمان وجود csrfmiddlewaretoken دائمًا -->
+<form id="csrf-form" hidden>
+    {% csrf_token %}
+</form>
+
+<div class="trips-page">
+    {% if trips %}
+        {% for trip in trips %}
+            <article class="trip-card">
+                <div class="trip-top">
+                    <div>
+                        <div class="trip-number">رحلة رقم #{{ trip.id }}</div>
+                        <div class="muted" style="margin-top:6px;font-size:13px">
+                            {{ trip.requested_at|date:"Y/m/d - H:i" }}
+                        </div>
+                    </div>
+                    <span class="trip-status status-{{ trip.status }}">
+                        {% if trip.status == "REQUESTED" %}
+                            بانتظار عروض الكباتن
+                        {% elif trip.status == "ACCEPTED" %}
+                            تم قبول الرحلة
+                        {% elif trip.status == "ARRIVING" %}
+                            الكابتن في الطريق
+                        {% elif trip.status == "ARRIVED" %}
+                            الكابتن وصل
+                        {% elif trip.status == "IN_PROGRESS" %}
+                            الرحلة جارية
+                        {% elif trip.status == "COMPLETED" %}
+                            مكتملة
+                        {% elif trip.status == "CANCELLED" %}
+                            ملغاة
+                        {% elif trip.status == "EXPIRED" %}
+                            انتهت
+                        {% else %}
+                            {{ trip.get_status_display }}
+                        {% endif %}
+                    </span>
+                </div>
+
+                <div class="trip-route">
+                    <div class="route-item">
+                        <div class="route-label">📍 نقطة الانطلاق</div>
+                        <div class="route-value">{{ trip.pickup_address }}</div>
+                    </div>
+                    <div class="route-item">
+                        <div class="route-label">🏁 الوجهة</div>
+                        <div class="route-value">{{ trip.destination_address }}</div>
+                    </div>
+                </div>
+
+                <div class="trip-details">
+                    <div>
+                        <div class="detail-label">السعر التقديري</div>
+                        <div class="detail-value">
+                            {% if trip.estimated_fare != None %}
+                                {{ trip.estimated_fare|floatformat:2 }} ج.م
+                            {% else %}غير محدد{% endif %}
+                        </div>
+                    </div>
+                    <div>
+                        <div class="detail-label">الأجرة المتفق عليها</div>
+                        <div class="detail-value">
+                            {% if trip.agreed_fare != None %}
+                                {{ trip.agreed_fare|floatformat:2 }} ج.م
+                            {% else %}—{% endif %}
+                        </div>
+                    </div>
+                    <div>
+                        <div class="detail-label">الأجرة النهائية</div>
+                        <div class="detail-value">
+                            {% if trip.final_fare != None %}
+                                {{ trip.final_fare|floatformat:2 }} ج.م
+                            {% else %}—{% endif %}
+                        </div>
+                    </div>
+                    <div>
+                        <div class="detail-label">طريقة الدفع</div>
+                        <div class="detail-value">
+                            {% if trip.payment_method == "CASH" %}نقدًا{% else %}دفع إلكتروني{% endif %}
+                        </div>
+                    </div>
+                    <div>
+                        <div class="detail-label">الكابتن</div>
+                        <div class="detail-value">
+                            {% if trip.captain %}
+                                {{ trip.captain.user.get_full_name|default:trip.captain.user.username }}
+                            {% else %}لم يتم التعيين بعد{% endif %}
+                        </div>
+                    </div>
+                    <div>
+                        <div class="detail-label">تاريخ الانتهاء</div>
+                        <div class="detail-value">
+                            {% if trip.completed_at %}
+                                {{ trip.completed_at|date:"Y/m/d - H:i" }}
+                            {% elif trip.cancelled_at %}
+                                {{ trip.cancelled_at|date:"Y/m/d - H:i" }}
+                            {% else %}—{% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ✨ قسم عروض الكباتن (يظهر فقط للرحلات بانتظار العروض) -->
+                {% if trip.status == "REQUESTED" %}
+                <section
+                    class="offers-section"
+                    data-offers-url="{% url 'trips_api:offer_list' trip.id %}"
+                    data-accept-url-template="{% url 'trips_api:offer_accept' trip.id 0 %}">
+                    <div class="offers-heading">
+                        <h3>عروض الكباتن</h3>
+                        <span class="muted">اختر العرض الأنسب لك</span>
+                    </div>
+
+                    <div class="offers-list">
+                        {% for offer in trip.customer_offers %}
+                            <article class="offer-card">
+                                <div>
+                                    <strong>
+                                        {{ offer.captain.user.get_full_name|default:offer.captain.user.username }}
+                                    </strong>
+                                    <div class="muted">
+                                        {{ offer.created_at|date:"H:i - Y/m/d" }}
+                                    </div>
+                                </div>
+
+                                <div class="offer-price">
+                                    {{ offer.amount|floatformat:2 }} ج.م
+                                </div>
+
+                                <div class="offer-status">
+                                    {% if offer.status == "PENDING" %}
+                                        <span class="trip-status">بانتظار قرارك</span>
+                                    {% elif offer.status == "ACCEPTED" %}
+                                        <span class="trip-status status-COMPLETED">تم القبول</span>
+                                    {% elif offer.status == "REJECTED" %}
+                                        <span class="trip-status status-CANCELLED">مرفوض</span>
+                                    {% elif offer.status == "EXPIRED" %}
+                                        <span class="trip-status status-CANCELLED">انتهى العرض</span>
+                                    {% endif %}
+                                </div>
+
+                                {% if offer.status == "PENDING" %}
+                                    <button
+                                        type="button"
+                                        class="choose-offer-btn"
+                                        data-url="{% url 'trips_api:offer_accept' trip.id offer.id %}">
+                                        اختر هذا الكابتن
+                                    </button>
+                                {% endif %}
+                            </article>
+                        {% empty %}
+                            <p class="muted">لم تصل عروض حتى الآن. انتظر عروض الكباتن.</p>
+                        {% endfor %}
+                    </div>
+                </section>
+                {% endif %}
+
+                {% if trip.cancellation_reason %}
+                    <div class="trip-cancellation">
+                        <strong>سبب الإلغاء:</strong> {{ trip.cancellation_reason }}
+                    </div>
+                {% endif %}
+
+                {% if trip.status == "REQUESTED" or trip.status == "ACCEPTED" or trip.status == "ARRIVING" or trip.status == "ARRIVED" or trip.status == "IN_PROGRESS" %}
+                    <div class="trip-actions">
+                        <a class="sg-button"
+                           href="{% url 'accounts:dashboard' %}?trip={{ trip.id }}">
+                            متابعة الرحلة
+                        </a>
+                    </div>
+                {% endif %}
+
+                {% if trip.status == "COMPLETED" and not trip.review %}
+                <section class="rating-section" data-trip-id="{{ trip.id }}"
+                         data-review-url="{% url 'trips_api:review_create' trip.id %}">
+                    <h3>قيّم الكابتن</h3>
+                    <p>
+                        كيف كانت رحلتك مع
+                        {% if trip.captain %}
+                            {{ trip.captain.user.get_full_name|default:trip.captain.user.username }}
+                        {% else %}
+                            الكابتن
+                        {% endif %}
+                        ؟
+                    </p>
+
+                    <div class="star-rating" data-rating="0">
+                        {% for i in "12345" %}
+                            <button
+                                type="button"
+                                class="star-btn"
+                                data-value="{{ forloop.counter }}"
+                                aria-label="{{ forloop.counter }} نجمة">
+                                ★
+                            </button>
+                        {% endfor %}
+                    </div>
+
+                    <textarea
+                        id="review-comment-{{ trip.id }}"
+                        placeholder="إضافة تعليق (اختياري)"
+                        rows="3"
+                        maxlength="1000"></textarea>
+
+                    <button
+                        type="button"
+                        class="submit-rating-btn"
+                        disabled>
+                        إرسال التقييم
+                    </button>
+                    <p
+                        id="rating-message-{{ trip.id }}"
+                        role="status"
+                        style="margin-top: 8px; min-height: 24px;"></p>
+                </section>
+                {% elif trip.status == "COMPLETED" and trip.review %}
+                <section class="review-display">
+                    <h3>تقييمك للكابتن</h3>
+                    <p><strong>التقييم:</strong> {{ trip.review.rating }} نجمة</p>
+                    {% if trip.review.comment %}
+                        <p><strong>التعليق:</strong> {{ trip.review.comment }}</p>
+                    {% endif %}
+                    <p class="muted">{{ trip.review.created_at|date:"Y/m/d - H:i" }}</p>
+                </section>
+                {% endif %}
+            </article>
+        {% endfor %}
+    {% else %}
+        <section class="empty-state">
+            <h2>لسه مفيش رحلات</h2>
+            <p class="muted">أول ما تطلب رحلة، هتظهر هنا وتقدر تتابع حالتها.</p>
+            <a class="sg-button" href="{% url 'accounts:dashboard' %}">احجز رحلتك الأولى</a>
+        </section>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    function getCookie(name) {
+        const cookies = document.cookie.split(";");
+
+        for (const cookie of cookies) {
+            const item = cookie.trim();
+
+            if (item.startsWith(name + "=")) {
+                return decodeURIComponent(item.substring(name.length + 1));
+            }
+        }
+
+        return null;
+    }
+
+    function createElement(tag, className, text) {
+        const element = document.createElement(tag);
+        if (className) element.className = className;
+        if (text !== undefined) element.textContent = text;
+        return element;
+    }
+
+    document.querySelectorAll(".offers-section").forEach(section => {
+        const offersList = section.querySelector(".offers-list");
+        const offersUrl = section.dataset.offersUrl;
+        const acceptTemplate = section.dataset.acceptUrlTemplate;
+
+        if (!offersList || !offersUrl || !acceptTemplate) return;
+
+        const loadingEl = document.createElement("p");
+        loadingEl.role = "status";
+        loadingEl.className = "sg-loading";
+        loadingEl.style.display = "none";
+        loadingEl.textContent = "جارٍ تحديث العروض...";
+        section.insertBefore(loadingEl, offersList.nextSibling || null);
+
+        const errorEl = document.createElement("p");
+        errorEl.role = "status";
+        errorEl.className = "sg-error-inline";
+        errorEl.style.display = "none";
+        section.insertBefore(errorEl, loadingEl.nextSibling || null);
+
+        function renderOffers(offers) {
+            offersList.replaceChildren();
+
+            if (!offers.length) {
+                offersList.append(
+                    createElement(
+                        "p",
+                        "muted",
+                        "لم تصل عروض حتى الآن. انتظر عروض الكباتن."
+                    )
+                );
+                return;
+            }
+
+            offers.forEach(offer => {
+                const card = createElement("article", "offer-card");
+
+                const info = createElement("div");
+                info.append(
+                    createElement("strong", "", offer.captain_username || "كابتن")
+                );
+
+                info.append(
+                    createElement(
+                        "div",
+                        "muted",
+                        offer.created_at
+                            ? new Date(offer.created_at).toLocaleString("ar-EG")
+                            : ""
+                    )
+                );
+
+                const price = createElement(
+                    "div",
+                    "offer-price",
+                    Number(offer.amount).toFixed(2) + " ج.م"
+                );
+
+                card.append(info, price);
+
+                const statuses = {
+                    PENDING: "بانتظار قرارك",
+                    ACCEPTED: "تم القبول",
+                    REJECTED: "مرفوض",
+                    EXPIRED: "انتهى العرض"
+                };
+
+                card.append(
+                    createElement(
+                        "span",
+                        "trip-status",
+                        statuses[offer.status] || offer.status
+                    )
+                );
+
+                if (offer.status === "PENDING") {
+                    const button = createElement(
+                        "button",
+                        "choose-offer-btn",
+                        "اختر هذا الكابتن"
+                    );
+
+                    button.type = "button";
+
+                    button.addEventListener("click", async () => {
+                        if (!confirm("هل تريد اختيار هذا الكابتن بهذا السعر؟")) {
+                            return;
+                        }
+
+                        button.disabled = true;
+                        button.textContent = "جارٍ تأكيد الاختيار...";
+
+                        try {
+                            const acceptUrl = acceptTemplate.replace(
+                                /0\/$/,
+                                offer.id + "/"
+                            );
+
+                            const response = await fetch(acceptUrl, {
+                                method: "POST",
+                                credentials: "same-origin",
+                                headers: {
+                                    "X-CSRFToken":
+                                        document.querySelector(
+                                            '#csrf-form [name="csrfmiddlewaretoken"]'
+                                        )?.value || getCookie("csrftoken"),
+                                    "X-Requested-With": "XMLHttpRequest"
+                                }
+                            });
+
+                            const data = await response.json();
+
+                            if (!response.ok) {
+                                throw new Error(
+                                    data.detail
+                                        ? Array.isArray(data.detail)
+                                            ? data.detail.join(" ")
+                                            : data.detail
+                                        : "تعذر قبول العرض."
+                                );
+                            }
+
+                            alert("تم اختيار الكابتن وقبول العرض بنجاح.");
+                            window.location.reload();
+
+                        } catch (error) {
+                            alert(error.message);
+                            button.disabled = false;
+                            button.textContent = "اختر هذا الكابتن";
+                        }
+                    });
+
+                    card.append(button);
+                }
+
+                offersList.append(card);
+            });
+        }
+
+        async function refreshOffers() {
+            loadingEl.style.display = "";
+            errorEl.style.display = "none";
+            try {
+                const response = await fetch(offersUrl, {
+                    credentials: "same-origin",
+                    headers: {
+                        "X-Requested-With": "XMLHttpRequest"
+                    }
+                });
+
+                let data;
+                try {
+                    data = await response.json();
+                } catch {
+                    throw new Error("الرد من السيرفر غير متوقع.");
+                }
+
+                if (!response.ok) {
+                    throw new Error(
+                        data.detail
+                            ? Array.isArray(data.detail)
+                                ? data.detail.join(" ")
+                                : data.detail
+                            : "فشل تحديث العروض."
+                    );
+                }
+
+                renderOffers(Array.isArray(data) ? data : data.results || []);
+
+            } catch (error) {
+                errorEl.textContent = error.message || "فشل تحديث العروض.";
+                errorEl.style.display = "";
+                console.error("Offers refresh failed:", error);
+            } finally {
+                loadingEl.style.display = "none";
+            }
+        }
+
+        refreshOffers();
+        setInterval(refreshOffers, 10000);
+    });
+})();
+
+(function () {
+    const csrfToken = document.querySelector(
+        '#csrf-form [name="csrfmiddlewaretoken"]'
+    )?.value;
+
+    document.querySelectorAll(".rating-section").forEach(section => {
+        const tripId = section.dataset.tripId;
+        const reviewUrl = section.dataset.reviewUrl;
+        const commentEl = document.getElementById(`review-comment-${tripId}`);
+        const submitBtn = section.querySelector(".submit-rating-btn");
+        const messageEl = document.getElementById(`rating-message-${tripId}`);
+        const starBtns = section.querySelectorAll(".star-btn");
+        let selectedRating = 0;
+
+        function showMessage(text, isError = false) {
+            if (!messageEl) return;
+            messageEl.textContent = text;
+            messageEl.style.color = isError ? "#b42318" : "#027a48";
+        }
+
+        function updateStars() {
+            starBtns.forEach(btn => {
+                const value = Number(btn.dataset.value);
+                if (value <= selectedRating) {
+                    btn.style.color = "#facc15";
+                } else {
+                    btn.style.color = "#9ca3af";
+                }
+            });
+            submitBtn.disabled = selectedRating === 0;
+        }
+
+        starBtns.forEach(btn => {
+            btn.addEventListener("click", () => {
+                selectedRating = Number(btn.dataset.value);
+                updateStars();
+            });
+        });
+
+        updateStars();
+
+        submitBtn.addEventListener("click", async () => {
+            if (selectedRating === 0) return;
+
+            submitBtn.disabled = true;
+            showMessage("جارٍ إرسال التقييم...");
+
+            try {
+                const response = await fetch(reviewUrl, {
+                    method: "POST",
+                    credentials: "same-origin",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRFToken": csrfToken,
+                        "Accept": "application/json",
+                    },
+                    body: JSON.stringify({
+                        rating: selectedRating,
+                        comment: commentEl ? commentEl.value.trim() : "",
+                    }),
+                });
+
+                let data;
+                try {
+                    data = await response.json();
+                } catch {
+                    throw new Error("الرد من السيرفر غير متوقع.");
+                }
+
+                if (!response.ok) {
+                    const detail = Array.isArray(data?.detail)
+                        ? data.detail.join(" ")
+                        : (data?.detail || "فشل إرسال التقييم.");
+                    throw new Error(detail);
+                }
+
+                section.replaceChildren();
+                const heading = document.createElement("h3");
+                heading.textContent = "تقييمك للكابتن";
+                section.appendChild(heading);
+
+                const ratingP = document.createElement("p");
+                ratingP.innerHTML = `<strong>التقييم:</strong> ${selectedRating} نجمة`;
+                section.appendChild(ratingP);
+
+                const commentVal = commentEl ? commentEl.value.trim() : "";
+                if (commentVal) {
+                    const commentP = document.createElement("p");
+                    commentP.innerHTML = `<strong>التعليق:</strong> ${commentVal}`;
+                    section.appendChild(commentP);
+                }
+
+                const dateP = document.createElement("p");
+                dateP.className = "muted";
+                dateP.textContent = new Date().toLocaleString("ar-EG");
+                section.appendChild(dateP);
+
+                showMessage("تم إرسال التقييم بنجاح.", false);
+            } catch (error) {
+                showMessage(error.message || "فشل إرسال التقييم. جرّب تاني.", true);
+                submitBtn.disabled = false;
+            }
+        });
+    });
+})();
+</script>
+{% endblock %}

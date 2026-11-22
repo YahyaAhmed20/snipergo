@@ -1,304 +1,214 @@
+{% extends "base.html" %}
 
-<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>SNIPER GO | احجز رحلتك</title>
+{% block title %}احجز رحلتك | SNIPER GO{% endblock %}
 
-    <link rel="stylesheet"
-          href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-
-    <style>
-        * { box-sizing: border-box; }
-
-        body {
+{% block extra_head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+        .sg-dashboard-page {
             margin: 0;
             font-family: Tahoma, Arial, sans-serif;
             background: #f3f5f8;
             color: #182230;
         }
-
-        header {
-            background: #111827;
-            color: white;
-            padding: 18px 6%;
+        .sg-dashboard-page .trips-page {
+            width: min(1100px, calc(100% - 32px));
+            margin: 30px auto;
+        }
+        .sg-dashboard-page .trips-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-bottom: 24px;
+        }
+        .sg-dashboard-page .trips-header h1 { margin: 0 0 8px; }
+        .sg-dashboard-page .muted { color: #667085; }
+        .sg-dashboard-page .trip-card {
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 16px;
+            padding: 22px;
+            margin-bottom: 16px;
+            box-shadow: 0 6px 22px rgba(16,24,40,.05);
+        }
+        .sg-dashboard-page .trip-top {
             display: flex;
             justify-content: space-between;
             align-items: center;
             gap: 12px;
+            flex-wrap: wrap;
+            padding-bottom: 16px;
+            border-bottom: 1px solid #eaecf0;
+            margin-bottom: 18px;
         }
-
-        header h1 {
-            margin: 0;
-            font-size: 23px;
-            color: #facc15;
-        }
-
-        header p {
-            margin: 7px 0 0;
+        .sg-dashboard-page .trip-number { font-weight: 800; font-size: 17px; }
+        .sg-dashboard-page .trip-status {
+            display: inline-block;
+            padding: 7px 12px;
+            border-radius: 999px;
             font-size: 13px;
-            color: #d1d5db;
-        }
-
-        button, input, select { font: inherit; }
-
-        button {
-            cursor: pointer;
-            border: 0;
-            border-radius: 9px;
-            padding: 12px 16px;
-        }
-
-        .logout {
-            background: #374151;
-            color: white;
-        }
-
-        main {
-            width: min(1100px, 94%);
-            margin: 28px auto;
-            display: grid;
-            grid-template-columns: minmax(280px, 380px) 1fr;
-            gap: 22px;
-        }
-
-        .panel {
-            background: white;
-            border-radius: 15px;
-            padding: 22px;
-            box-shadow: 0 4px 20px #1018280c;
-        }
-
-        h2 { margin-top: 0; font-size: 21px; }
-
-        .welcome {
-            color: #667085;
-            font-size: 14px;
-            margin-bottom: 22px;
-        }
-
-        label {
-            display: block;
-            margin: 17px 0 7px;
-            font-size: 14px;
-            font-weight: bold;
-        }
-
-        input, select {
-            width: 100%;
-            padding: 12px;
-            border: 1px solid #d0d5dd;
-            border-radius: 9px;
-            background: white;
-        }
-
-        input:focus, select:focus {
-            outline: 2px solid #facc15;
-            border-color: transparent;
-        }
-
-        .map-help {
-            color: #667085;
-            font-size: 13px;
-            line-height: 1.8;
-        }
-
-        #map {
-            width: 100%;
-            height: 500px;
-            border-radius: 12px;
-            z-index: 1;
-        }
-
-        .target-buttons {
-            display: flex;
-            gap: 8px;
-            margin: 12px 0;
-        }
-
-        .target-buttons button {
-            flex: 1;
-            background: #eef2f6;
+            font-weight: 700;
+            background: #f2f4f7;
             color: #344054;
         }
-
-        .target-buttons button.active {
-            background: #facc15;
-            color: #111827;
-            font-weight: bold;
+        .sg-dashboard-page .status-COMPLETED { background: #dcfae6; color: #027a48; }
+        .sg-dashboard-page .status-CANCELLED, .sg-dashboard-page .status-EXPIRED { background: #fee4e2; color: #b42318; }
+        .sg-dashboard-page .status-IN_PROGRESS { background: #dbeafe; color: #1d4ed8; }
+        .sg-dashboard-page .status-ACCEPTED, .sg-dashboard-page .status-ARRIVING, .sg-dashboard-page .status-ARRIVED { background: #fef0c7; color: #93370d; }
+        .sg-dashboard-page .trip-route {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 18px;
         }
-
-        .primary {
-            width: 100%;
-            margin-top: 22px;
-            background: #facc15;
-            color: #111827;
-            font-weight: bold;
+        .sg-dashboard-page .route-item { min-width: 0; }
+        .sg-dashboard-page .route-label {
+            color: #667085;
+            font-size: 13px;
+            margin-bottom: 7px;
         }
-
-        button:disabled {
-            opacity: .6;
-            cursor: not-allowed;
+        .sg-dashboard-page .route-value { font-weight: 700; line-height: 1.7; overflow-wrap: anywhere; }
+        .sg-dashboard-page .trip-details {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 14px;
+            margin-top: 20px;
+            padding-top: 16px;
+            border-top: 1px solid #eaecf0;
         }
-
-        #message {
-            display: none;
+        .sg-dashboard-page .detail-label { color: #667085; font-size: 13px; margin-bottom: 6px; }
+        .sg-dashboard-page .detail-value { font-weight: 700; overflow-wrap: anywhere; }
+        .sg-dashboard-page .trip-cancellation {
             margin-top: 16px;
             padding: 12px;
-            border-radius: 9px;
-            line-height: 1.7;
-            overflow-wrap: anywhere;
-        }
-
-        #message.error {
-            display: block;
+            border-radius: 10px;
             background: #fef3f2;
             color: #b42318;
         }
-
-        #message.success {
-            display: block;
-            background: #ecfdf3;
-            color: #027a48;
-        }
-
-        .coordinates {
-            color: #667085;
-            font-size: 12px;
-            direction: ltr;
-            text-align: right;
-            margin-top: 6px;
-        }
-
-        .address-search {
-            position: relative;
-        }
-
-        .search-hint {
-            color: #667085;
-            font-size: 12px;
-            margin: 6px 0 0;
-            line-height: 1.6;
-        }
-
-        .search-results {
-            display: none;
-            position: relative;
-            z-index: 1200;
-            margin-top: 6px;
+        .sg-dashboard-page .trip-actions { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+        .sg-dashboard-page .trip-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 42px;
+            padding: 10px 16px;
             border: 1px solid #d0d5dd;
             border-radius: 10px;
+            text-decoration: none;
+            color: #344054;
+            font-weight: 700;
+        }
+        .sg-dashboard-page .empty-state {
             background: #fff;
-            box-shadow: 0 8px 24px #1018281a;
-            overflow: hidden;
+            border: 1px dashed #d0d5dd;
+            border-radius: 16px;
+            padding: 42px 20px;
+            text-align: center;
         }
+        .sg-dashboard-page .empty-state h2 { margin-top: 0; }
 
-        .search-results.visible {
-            display: block;
-        }
-
-        .search-result {
-            display: block;
-            width: 100%;
-            padding: 11px 12px;
-            border-radius: 0;
-            background: #fff;
-            color: #182230;
-            text-align: right;
-            line-height: 1.6;
-            border-bottom: 1px solid #eaecf0;
-        }
-
-        .search-result:last-child {
-            border-bottom: 0;
-        }
-
-        .search-result:hover,
-        .search-result:focus {
-            background: #fffae6;
-            outline: 2px solid #facc15;
-            outline-offset: -2px;
-        }
-
-        .search-results-message {
-            padding: 10px 12px;
-            margin: 0;
-            color: #667085;
-            font-size: 13px;
-            line-height: 1.6;
-        }
-
-        .target-buttons button.selecting {
-            outline: 2px solid #111827;
-            outline-offset: 2px;
-        }
-
-        @media (max-width: 760px) {
-            main { grid-template-columns: 1fr; }
-            #map { height: 380px; }
-            header { padding: 16px 4%; }
-            header h1 { font-size: 19px; }
-            .panel { padding: 17px; }
-        }
-
-        #trip-tracking {
-            display: none;
+        /* ✨ تنسيق قسم العروض */
+        .sg-dashboard-page .offers-section {
             margin-top: 22px;
             padding-top: 18px;
-            border-top: 1px solid #e4e7ec;
+            border-top: 1px solid #eaecf0;
         }
 
-        #trip-tracking.visible { display: block; }
-
-        .tracking-status {
-            padding: 12px;
-            margin: 12px 0;
-            border-radius: 9px;
-            background: #f2f4f7;
-            line-height: 1.8;
-        }
-
-        #trip-offers {
-            display: grid;
+        .sg-dashboard-page .offers-heading {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
             gap: 10px;
-            margin-top: 12px;
+            margin-bottom: 14px;
         }
 
-        .trip-offer {
-            padding: 14px;
-            border: 1px solid #d0d5dd;
-            border-radius: 10px;
+        .sg-dashboard-page .offers-heading h3 {
+            margin: 0;
         }
 
-        .trip-offer button {
-            margin-top: 10px;
-            background: #facc15;
-            color: #111827;
-            font-weight: bold;
+        .sg-dashboard-page .offers-list {
+            display: grid;
+            gap: 12px;
         }
 
-        #tracking-message {
-            line-height: 1.8;
-            overflow-wrap: anywhere;
+        .sg-dashboard-page .offer-card {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 14px;
+            flex-wrap: wrap;
+            padding: 16px;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            background: #fafbfc;
+        }
+
+        .sg-dashboard-page .offer-price {
+            font-size: 19px;
+            font-weight: 800;
+            color: #1570ef;
+        }
+
+        .sg-dashboard-page .choose-offer-btn {
+            border: 0;
+            border-radius: 9px;
+            padding: 11px 16px;
+            background: #182230;
+            color: white;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .sg-dashboard-page .choose-offer-btn:disabled {
+            opacity: .5;
+            cursor: not-allowed;
+        }
+
+        @media (max-width: 650px) {
+            .sg-dashboard-page .trips-page { width: calc(100% - 24px); margin: 20px auto; }
+            .sg-dashboard-page .trip-card { padding: 17px; }
+            .sg-dashboard-page .trip-route { grid-template-columns: 1fr; gap: 14px; }
+            .sg-dashboard-page .trip-details { grid-template-columns: 1fr 1fr; }
+        }
+        @media (max-width: 600px) {
+            .sg-dashboard-page .offer-card {
+                align-items: stretch;
+                flex-direction: column;
+            }
+        }
+        @media (max-width: 390px) {
+            .sg-dashboard-page .trip-details { grid-template-columns: 1fr; }
         }
     </style>
-</head>
-<body>
+{% endblock %}
 
-<header>
+{% block header %}
+<header class="sg-dashboard-header">
     <div>
         <h1>SNIPER GO</h1>
         <p>مشوارك في السويس يبدأ من هنا</p>
     </div>
-
-    <form method="post" action="{% url 'accounts:logout' %}">
-        {% csrf_token %}
-        <button class="logout" type="submit">تسجيل الخروج</button>
-    </form>
+    <nav class="customer-nav" aria-label="التنقل الرئيسي">
+        <a class="profile-link" href="{% url 'accounts:customer_profile' %}">
+            <span aria-hidden="true">👤</span>
+            حسابي
+        </a>
+        <a class="profile-link" href="{% url 'accounts:customer_trips' %}">
+            <span aria-hidden="true">🧾</span>
+            رحلاتي
+        </a>
+        <form method="post" action="{% url 'accounts:logout' %}">
+            {% csrf_token %}
+            <button class="logout" type="submit">تسجيل الخروج</button>
+        </form>
+    </nav>
 </header>
+{% endblock %}
 
-<main>
+{% block content %}
+<div class="sg-dashboard-page">
     <section class="panel">
         <h2>احجز رحلتك</h2>
 
@@ -349,8 +259,11 @@
             <label for="payment_method">طريقة الدفع</label>
             <select id="payment_method" name="payment_method">
                 <option value="CASH">نقدًا للكابتن</option>
-                <option value="ONLINE">دفع إلكتروني</option>
+                <option value="ONLINE">تحويل مباشر للكابتن (إنستا باي أو محفظة إلكترونية)</option>
             </select>
+            <p class="payment-hint">
+                التحويل يتم مباشرةً إلى الكابتن بالاتفاق بينكما، ولا تتم معالجة أجرة الرحلة عبر SNIPER GO.
+            </p>
 
             <button id="submit-button" class="primary" type="submit">
                 طلب الرحلة
@@ -358,9 +271,6 @@
         </form>
 
         <div id="message" role="status" aria-live="polite"></div>
-
-
-
     </section>
 
     <section class="panel">
@@ -382,26 +292,43 @@
 
         <div id="map" aria-label="خريطة تحديد مواقع الرحلة"></div>
     </section>
-</main>
+</div>
 
-        <section id="trip-tracking" class="panel" aria-live="polite">
-            <h2>Trip Tracking</h2>
-            <p>Trip ID: <strong id="tracked-trip-id">-</strong></p>
-            <div id="trip-status" class="tracking-status">
-                No active trip selected.
-            </div>
-            <div id="trip-details"></div>
-            <h3>Captain Offers</h3>
-            <div id="trip-offers"></div>
-            <p id="tracking-message" role="status"></p>
-            <button type="button" id="refresh-trip">Refresh Status</button>
-            <button type="button" id="cancel-trip">Cancel Trip</button>
-        </section>
+<section id="trip-tracking" class="panel" aria-live="polite">
+    <h2>متابعة الرحلة</h2>
 
+    <p>
+        رقم الرحلة:
+        <strong id="tracked-trip-id">-</strong>
+    </p>
+
+    <div id="trip-status" class="tracking-status">
+        لا توجد رحلة نشطة محددة.
+    </div>
+
+    <div id="trip-details"></div>
+
+    <h3>عروض الكباتن</h3>
+    <div id="trip-offers"></div>
+
+    <p id="tracking-message" role="status"></p>
+
+    <p id="tracking-loading" role="status" class="sg-loading" style="display:none;">جارٍ تحديث حالة الرحلة...</p>
+
+    <button type="button" id="refresh-trip">
+        تحديث حالة الرحلة
+    </button>
+
+    <button type="button" id="cancel-trip">
+        إلغاء الرحلة
+    </button>
+</section>
+{% endblock %}
+
+{% block extra_js %}
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
 <script>
-(() => {
+(function () {
     const form = document.getElementById("booking-form");
     const message = document.getElementById("message");
     const submitButton = document.getElementById("submit-button");
@@ -415,10 +342,8 @@
 
     const map = L.map("map").setView([29.9668, 32.5498], 13);
 
-    const cartoApiKey = "{{ carto_api_key|escapejs }}";
-
     L.tileLayer(
-        `https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=${encodeURIComponent(cartoApiKey)}`,
+        "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
         {
             maxZoom: 18,
             attribution:
@@ -568,24 +493,88 @@
             return;
         }
 
+        const seenPlaces = [];
+
         for (const feature of features) {
             const coordinates = feature?.geometry?.coordinates;
             if (!Array.isArray(coordinates) || coordinates.length < 2) continue;
 
             const [longitude, latitude] = coordinates;
             const properties = feature.properties || {};
-            const label = properties.name ||
-                [properties.street, properties.district, properties.city]
-                    .filter(Boolean).join("، ");
+
+            const label =
+                properties["name:ar"] ||
+                properties.name_ar ||
+                properties.nameAr ||
+                properties.localized_name ||
+                properties.name ||
+                [
+                    properties.street,
+                    properties.district,
+                    properties.city
+                ].filter(Boolean).join("، ");
 
             if (!label) continue;
+
+            const normalizedLabel = label
+                .toLowerCase()
+                .normalize("NFKC")
+                .replace(/[.,،؛:]/g, " ")
+                .replace(/\s+/g, " ")
+                .trim();
+
+            const latitudeNum = Number(coordinates[1]);
+            const longitudeNum = Number(coordinates[0]);
+
+            if (!Number.isFinite(latitudeNum) || !Number.isFinite(longitudeNum)) {
+                continue;
+            }
+
+            const isDuplicate = seenPlaces.some(place => {
+                if (place.label !== normalizedLabel) {
+                    return false;
+                }
+
+                const toRadians = degrees => degrees * Math.PI / 180;
+
+                const lat1 = toRadians(place.latitude);
+                const lat2 = toRadians(latitudeNum);
+                const deltaLat = toRadians(latitudeNum - place.latitude);
+                const deltaLng = toRadians(longitudeNum - place.longitude);
+
+                const a =
+                    Math.sin(deltaLat / 2) ** 2 +
+                    Math.cos(lat1) *
+                    Math.cos(lat2) *
+                    Math.sin(deltaLng / 2) ** 2;
+
+                const distance = 6371000 * 2 * Math.atan2(
+                    Math.sqrt(a),
+                    Math.sqrt(a)
+                );
+
+                return distance <= 100;
+            });
+
+            if (isDuplicate) continue;
+
+            seenPlaces.push({
+                label: normalizedLabel,
+                latitude: latitudeNum,
+                longitude: longitudeNum
+            });
 
             const detail = [
                 properties.street,
                 properties.district,
                 properties.city,
                 properties.state
-            ].filter((value, index, values) => value && values.indexOf(value) === index && value !== label);
+            ].filter(
+                (value, index, values) =>
+                    value &&
+                    values.indexOf(value) === index &&
+                    value !== label
+            );
 
             const button = document.createElement("button");
             button.type = "button";
@@ -623,50 +612,158 @@
 
         showSearchMessage(target, "جارٍ البحث عن الأماكن...");
 
-        try {
-            // Photon provides place-name search without requiring an API key.
-            // Search is debounced below to avoid sending a request on every keystroke.
-            const params = new URLSearchParams({
-                q: `${query}, السويس، مصر`,
-                lat: "29.9668",
-                lon: "32.5498",
-                limit: "6",
-            });
+        const cleanQuery = query.trim().replace(/\s+/g, " ");
+        const areaQuery = cleanQuery
+            .replace(/شارع|ش\.|منطقة|حي/g, "")
+            .trim();
 
+    async function fetchPhoton(searchText) {
+        const params = new URLSearchParams({
+            q: `${searchText}, السويس، مصر`,
+            lat: "29.9668",
+            lon: "32.5498",
+            bbox: "32.45,29.90,32.65,30.10",
+            limit: "10",
+        });
+
+        const photonController = new AbortController();
+        let timedOut = false;
+
+        const abortPhoton = () => photonController.abort();
+
+        controller.signal.addEventListener(
+            "abort",
+            abortPhoton,
+            { once: true }
+        );
+
+        const timeoutId = setTimeout(() => {
+            timedOut = true;
+            photonController.abort();
+        }, 6000);
+
+        try {
             const response = await fetch(
-                `https://photon.komoot.io/api/?${params.toString()}`,
-                {
-                    method: "GET",
-                    mode: "cors",
-                    headers: { "Accept": "application/json" },
-                    signal: controller.signal
-                }
+                `https://photon.komoot.io/api/?${params}`,
+                { signal: photonController.signal }
             );
 
             if (!response.ok) {
-                throw new Error("تعذر الاتصال بخدمة البحث.");
+                throw new Error(`Photon HTTP ${response.status}`);
             }
 
             const data = await response.json();
 
-            if (requestId !== searchRequestIds[target]) return;
+            return Array.isArray(data.features)
+                ? data.features
+                : [];
 
-            renderSearchResults(target, Array.isArray(data.features) ? data.features : []);
         } catch (error) {
-            if (error.name === "AbortError" || requestId !== searchRequestIds[target]) {
-                return;
+            if (controller.signal.aborted) {
+                throw error;
             }
-            showSearchMessage(
-                target,
-                "تعذر البحث الآن. يمكنك تحديد الموقع مباشرةً على الخريطة."
+
+            if (timedOut) {
+                console.warn("Photon timed out after 6 seconds");
+                return [];
+            }
+
+            throw error;
+
+        } finally {
+            clearTimeout(timeoutId);
+
+            controller.signal.removeEventListener(
+                "abort",
+                abortPhoton
             );
         }
     }
 
+    async function fetchGoogle(searchText) {
+        const response = await fetch(
+            `/api/trips/address-search/?q=${encodeURIComponent(searchText)}`,
+            {
+                credentials: "same-origin",
+                signal: controller.signal,
+            }
+        );
+
+        if (!response.ok) {
+            throw new Error(`Google HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        return Array.isArray(data.features)
+            ? data.features
+            : [];
+    }
+
+    async function fetchPlaces(searchText) {
+        try {
+            const photonFeatures = await fetchPhoton(searchText);
+
+            if (photonFeatures.length) {
+                return photonFeatures;
+            }
+        } catch (error) {
+            if (error.name === "AbortError") throw error;
+
+            console.warn("Photon search failed:", error);
+        }
+
+        try {
+            const googleFeatures = await fetchGoogle(searchText);
+
+            if (googleFeatures.length) {
+                return googleFeatures;
+            }
+        } catch (error) {
+            if (error.name === "AbortError") throw error;
+
+            console.warn("Google Places fallback failed:", error);
+        }
+
+        return [];
+    }
+
+    try {
+        let features = await fetchPlaces(cleanQuery);
+
+        if (requestId !== searchRequestIds[target]) return;
+
+        if (!features.length && areaQuery && areaQuery !== cleanQuery) {
+            await new Promise(resolve => setTimeout(resolve, 300));
+
+            if (requestId !== searchRequestIds[target]) return;
+
+            features = await fetchPlaces(areaQuery);
+        }
+
+        if (requestId !== searchRequestIds[target]) return;
+
+        renderSearchResults(target, features);
+
+    } catch (error) {
+        if (
+            error.name === "AbortError" ||
+            requestId !== searchRequestIds[target]
+        ) {
+            return;
+        }
+
+        console.error("SNIPER GO address search error:", error);
+
+        showSearchMessage(
+            target,
+            "تعذر الاتصال بخدمات البحث. حاول مرة أخرى أو حدد الموقع على الخريطة."
+        );
+    }
+}
+
     for (const target of ["pickup", "destination"]) {
         addressInputs[target].addEventListener("input", () => {
-            // Editing a selected address invalidates the old coordinates until a new
-            // result is selected or the location is selected on the map again.
             locations[target] = null;
             document.getElementById(`${target}-coords`).textContent =
                 "اختر مكانًا من نتائج البحث أو حدده على الخريطة";
@@ -746,6 +843,56 @@
     let trackingTimer = null;
     let trackingRequestInProgress = false;
 
+    let captainMarker = null;
+
+    const liveLocationStatuses = new Set([
+        "ACCEPTED",
+        "ARRIVING",
+        "ARRIVED",
+        "IN_PROGRESS"
+    ]);
+
+    function updateCaptainMarker(trip) {
+        const location = trip.captain_location;
+
+        if (
+            !liveLocationStatuses.has(trip.status) ||
+            !location ||
+            !Number.isFinite(Number(location.latitude)) ||
+            !Number.isFinite(Number(location.longitude))
+        ) {
+            if (captainMarker) {
+                map.removeLayer(captainMarker);
+                captainMarker = null;
+            }
+            return;
+        }
+
+        const latitude = Number(location.latitude);
+        const longitude = Number(location.longitude);
+
+        if (
+            latitude < -90 || latitude > 90 ||
+            longitude < -180 || longitude > 180
+        ) {
+            if (captainMarker) {
+                map.removeLayer(captainMarker);
+                captainMarker = null;
+            }
+            return;
+        }
+
+        const point = L.latLng(latitude, longitude);
+
+        if (captainMarker) {
+            captainMarker.setLatLng(point);
+        } else {
+            captainMarker = L.marker(point).addTo(map);
+        }
+
+        captainMarker.bindPopup("Captain's live location");
+    }
+
     const trackingPanel = document.getElementById("trip-tracking");
     const tripStatusElement = document.getElementById("trip-status");
     const tripDetailsElement = document.getElementById("trip-details");
@@ -753,21 +900,24 @@
     const trackingMessageElement = document.getElementById("tracking-message");
     const refreshTripButton = document.getElementById("refresh-trip");
     const cancelTripButton = document.getElementById("cancel-trip");
+    const trackingLoadingElement = document.getElementById("tracking-loading");
 
     const terminalTripStatuses = new Set([
         "COMPLETED", "CANCELLED", "EXPIRED"
     ]);
 
+   
     const tripStatusLabels = {
-        REQUESTED: "Waiting for captain offers",
-        ACCEPTED: "Captain accepted the trip",
-        ARRIVING: "Captain is on the way",
-        ARRIVED: "Captain has arrived",
-        IN_PROGRESS: "Trip in progress",
-        COMPLETED: "Trip completed",
-        CANCELLED: "Trip cancelled",
-        EXPIRED: "Trip expired"
+        REQUESTED: "بانتظار عروض الكباتن",
+        ACCEPTED: "تم قبول الرحلة",
+        ARRIVING: "الكابتن في الطريق",
+        ARRIVED: "الكابتن وصل إلى موقعك",
+        IN_PROGRESS: "الرحلة جارية",
+        COMPLETED: "اكتملت الرحلة",
+        CANCELLED: "تم إلغاء الرحلة",
+        EXPIRED: "انتهت صلاحية الرحلة"
     };
+
 
     function setTrackingMessage(message) {
         trackingMessageElement.textContent = message || "";
@@ -824,126 +974,168 @@
             trackingTimer = null;
         }
 
+        sessionStorage.removeItem("snipergoTrackedTripId");
         cancelTripButton.hidden = true;
     }
 
-    async function loadTripTracking() {
-        if (!trackedTripId || trackingRequestInProgress) {
-            return;
-        }
-
-        trackingRequestInProgress = true;
-
-        try {
-            const tripUrl = `/api/trips/${trackedTripId}/`;
-            const trip = await trackingFetch(tripUrl);
-
-            if (String(trip.id) !== String(trackedTripId)) {
-                throw new Error("Trip ID mismatch.");
-            }
-
-            document.getElementById("tracked-trip-id").textContent =
-                String(trip.id);
-
-            tripStatusElement.textContent =
-                `${tripStatusLabels[trip.status] || trip.status}`;
-
-            tripDetailsElement.replaceChildren();
-            appendTripDetail("Pickup", trip.pickup_address);
-            appendTripDetail("Destination", trip.destination_address);
-            appendTripDetail("Captain", trip.captain_username);
-            appendTripDetail("Estimated fare", trip.estimated_fare);
-            appendTripDetail("Agreed fare", trip.agreed_fare);
-            appendTripDetail("Final fare", trip.final_fare);
-
-            stopTripTrackingIfTerminal(trip.status);
-
-            const canCancel = ["REQUESTED", "ACCEPTED", "ARRIVING", "ARRIVED"].includes(trip.status);
-            cancelTripButton.hidden = !canCancel;
-
-            tripOffersElement.replaceChildren();
-
-            if (trip.status === "REQUESTED") {
-                const offers = await trackingFetch(
-                    `${tripUrl}offers/list/`
-                );
-
-                if (!Array.isArray(offers)) {
-                    throw new Error("Unexpected offers response format.");
-                }
-
-                for (const offer of offers) {
-                    if (offer.status !== "PENDING") {
-                        continue;
-                    }
-
-                    const card = document.createElement("article");
-                    card.className = "trip-offer";
-
-                    const captain = document.createElement("p");
-                    captain.textContent =
-                        `Captain: ${offer.captain_username}`;
-
-                    const amount = document.createElement("p");
-                    amount.textContent = `Offer: ${offer.amount} EGP`;
-
-                    const expiry = document.createElement("p");
-                    expiry.textContent = offer.expires_at
-                        ? `Expires: ${new Date(offer.expires_at).toLocaleString()}`
-                        : "";
-
-                    const acceptButton = document.createElement("button");
-                    acceptButton.type = "button";
-                    acceptButton.textContent = "Accept offer";
-
-                    acceptButton.addEventListener("click", async () => {
-                        acceptButton.disabled = true;
-                        setTrackingMessage("Accepting offer...");
-
-                        try {
-                            await trackingFetch(
-                                `${tripUrl}offers/${offer.id}/accept/`,
-                                {
-                                    method: "POST",
-                                    body: JSON.stringify({})
-                                }
-                            );
-
-                            setTrackingMessage("Offer accepted.");
-                            await loadTripTracking();
-                        } catch (error) {
-                            setTrackingMessage(error.message);
-                            acceptButton.disabled = false;
-                        }
-                    });
-
-                    card.append(captain, amount, expiry, acceptButton);
-                    tripOffersElement.appendChild(card);
-                }
-
-                if (!tripOffersElement.childElementCount) {
-                    const empty = document.createElement("p");
-                    empty.textContent = "No pending offers yet.";
-                    tripOffersElement.appendChild(empty);
-                }
-            }
-
-            if (terminalTripStatuses.has(trip.status)) {
-                tripOffersElement.replaceChildren();
-            }
-
-            setTrackingMessage("");
-        } catch (error) {
-            setTrackingMessage(
-                `Could not refresh trip status: ${error.message}`
-            );
-        } finally {
-            trackingRequestInProgress = false;
-        }
+    
+async function loadTripTracking() {
+    if (!trackedTripId || trackingRequestInProgress) {
+        return;
     }
+
+    trackingRequestInProgress = true;
+    if (trackingLoadingElement) trackingLoadingElement.style.display = "";
+    if (refreshTripButton) refreshTripButton.disabled = true;
+
+    try {
+        const tripUrl = `/api/trips/${trackedTripId}/`;
+        const trip = await trackingFetch(tripUrl);
+
+        if (String(trip.id) !== String(trackedTripId)) {
+            throw new Error("رقم الرحلة غير متطابق.");
+        }
+
+        updateCaptainMarker(trip);
+
+        document.getElementById("tracked-trip-id").textContent =
+            String(trip.id);
+
+        tripStatusElement.textContent =
+            tripStatusLabels[trip.status] || trip.status;
+
+        tripDetailsElement.replaceChildren();
+
+        appendTripDetail("عنوان الانطلاق", trip.pickup_address);
+        appendTripDetail("عنوان الوصول", trip.destination_address);
+        appendTripDetail("الكابتن", trip.captain_username || "لم يتم التعيين بعد");
+        appendTripDetail("السعر التقديري", trip.estimated_fare);
+        appendTripDetail("السعر المتفق عليه", trip.agreed_fare);
+        appendTripDetail("السعر النهائي", trip.final_fare);
+
+        stopTripTrackingIfTerminal(trip.status);
+
+        const canCancel = [
+            "REQUESTED",
+            "ACCEPTED",
+            "ARRIVING",
+            "ARRIVED"
+        ].includes(trip.status);
+
+        
+cancelTripButton.hidden =
+    !canCancel || terminalTripStatuses.has(trip.status);
+
+cancelTripButton.style.display = cancelTripButton.hidden
+    ? "none"
+    : "";
+
+        tripOffersElement.replaceChildren();
+
+        if (trip.status === "REQUESTED") {
+            const offers = await trackingFetch(
+                `${tripUrl}offers/list/`
+            );
+
+            if (!Array.isArray(offers)) {
+                throw new Error("تنسيق بيانات عروض الكباتن غير متوقع.");
+            }
+
+            for (const offer of offers) {
+                if (offer.status !== "PENDING") {
+                    continue;
+                }
+
+                const card = document.createElement("article");
+                card.className = "trip-offer";
+
+                const captain = document.createElement("p");
+                captain.textContent =
+                    `الكابتن: ${offer.captain_username}`;
+
+                const amount = document.createElement("p");
+                amount.textContent =
+                    `قيمة العرض: ${offer.amount} جنيه`;
+
+                const expiresAt = offer.expires_at
+                    ? new Date(offer.expires_at)
+                    : null;
+
+                const isExpired =
+                    !expiresAt || expiresAt.getTime() <= Date.now();
+
+                if (isExpired) {
+                    const expiredMessage = document.createElement("p");
+                    expiredMessage.textContent = "انتهت صلاحية العرض.";
+
+                    card.append(captain, amount, expiredMessage);
+                    tripOffersElement.appendChild(card);
+                    continue;
+                }
+
+                const expiry = document.createElement("p");
+                expiry.textContent =
+                    `ينتهي العرض: ${expiresAt.toLocaleString("ar-EG")}`;
+
+                const acceptButton = document.createElement("button");
+                acceptButton.type = "button";
+                acceptButton.textContent = "قبول العرض";
+
+                acceptButton.addEventListener("click", async () => {
+                    acceptButton.disabled = true;
+                    setTrackingMessage("جارٍ قبول العرض...");
+
+                    try {
+                        await trackingFetch(
+                            `${tripUrl}offers/${offer.id}/accept/`,
+                            {
+                                method: "POST",
+                                body: JSON.stringify({})
+                            }
+                        );
+
+                        setTrackingMessage("تم قبول العرض بنجاح.");
+                        await loadTripTracking();
+                    } catch (error) {
+                        setTrackingMessage(
+                            `تعذر قبول العرض: ${error.message}`
+                        );
+                        acceptButton.disabled = false;
+                    }
+                });
+
+                card.append(captain, amount, expiry, acceptButton);
+                tripOffersElement.appendChild(card);
+            }
+
+            if (!tripOffersElement.childElementCount) {
+                const empty = document.createElement("p");
+                empty.textContent = "لا توجد عروض معلقة من الكباتن حاليًا.";
+                tripOffersElement.appendChild(empty);
+            }
+        }
+
+        if (terminalTripStatuses.has(trip.status)) {
+            tripOffersElement.replaceChildren();
+        }
+
+        setTrackingMessage("");
+    } catch (error) {
+        setTrackingMessage(
+            `تعذر تحديث حالة الرحلة: ${error.message}`
+        );
+    } finally {
+        trackingRequestInProgress = false;
+        if (trackingLoadingElement) trackingLoadingElement.style.display = "none";
+        if (refreshTripButton) refreshTripButton.disabled = false;
+    }
+}
+
 
     function startTripTracking(tripId) {
         trackedTripId = String(tripId);
+        sessionStorage.setItem("snipergoTrackedTripId", trackedTripId);
+
         trackingPanel.classList.add("visible");
         document.getElementById("tracked-trip-id").textContent =
             trackedTripId;
@@ -958,35 +1150,51 @@
 
     refreshTripButton.addEventListener("click", loadTripTracking);
 
-    cancelTripButton.addEventListener("click", async () => {
+
+    const requestedTripId = new URLSearchParams(
+        window.location.search
+    ).get("trip");
+
+    const savedTripId = sessionStorage.getItem("snipergoTrackedTripId");
+
+    if (requestedTripId && /^\d+$/.test(requestedTripId)) {
+        startTripTracking(requestedTripId);
+    } else if (savedTripId && /^\d+$/.test(savedTripId)) {
+        startTripTracking(savedTripId);
+    }
+
+
+        cancelTripButton.addEventListener("click", async () => {
         if (!trackedTripId) {
             return;
         }
 
-        const reason = window.prompt("Enter a reason for cancelling the trip:");
+        const reason = window.prompt("ما سبب رغبتك في إلغاء الرحلة؟");
 
         if (reason === null) {
             return;
         }
 
         if (!reason.trim()) {
-            setTrackingMessage("A cancellation reason is required.");
+            setTrackingMessage("يرجى كتابة سبب إلغاء الرحلة.");
             return;
         }
 
         cancelTripButton.disabled = true;
-        setTrackingMessage("Cancelling trip...");
+        setTrackingMessage("جارٍ إرسال طلب إلغاء الرحلة...");
 
         try {
             await trackingFetch(`/api/trips/${trackedTripId}/cancel/`, {
                 method: "POST",
-                body: JSON.stringify({reason: reason.trim()})
+                body: JSON.stringify({ reason: reason.trim() })
             });
 
-            setTrackingMessage("Cancellation request completed.");
+            setTrackingMessage("تم إرسال طلب الإلغاء بنجاح.");
             await loadTripTracking();
         } catch (error) {
-            setTrackingMessage(error.message);
+            setTrackingMessage(
+                `تعذر إلغاء الرحلة: ${error.message}`
+            );
         } finally {
             cancelTripButton.disabled = false;
         }
@@ -1092,6 +1300,4 @@
     setTimeout(() => map.invalidateSize(), 100);
 })();
 </script>
-
-</body>
-</html>
+{% endblock %}

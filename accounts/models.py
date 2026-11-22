@@ -43,14 +43,14 @@ class CustomerProfile(models.Model):
 
 class CaptainProfile(models.Model):
     class ApprovalStatus(models.TextChoices):
-        PENDING = "PENDING", "Pending"
-        APPROVED = "APPROVED", "Approved"
-        REJECTED = "REJECTED", "Rejected"
+        PENDING = "PENDING", "قيد المراجعة"
+        APPROVED = "APPROVED", "معتمد"
+        REJECTED = "REJECTED", "مرفوض"
 
     class OperationalStatus(models.TextChoices):
-        OFFLINE = "OFFLINE", "Offline"
-        ONLINE = "ONLINE", "Online"
-        SUSPENDED = "SUSPENDED", "Suspended"
+        OFFLINE = "OFFLINE", "غير متاح"
+        ONLINE = "ONLINE", "متاح"
+        SUSPENDED = "SUSPENDED", "موقوف"
 
     user = models.OneToOneField(
         User,
@@ -159,15 +159,16 @@ class CaptainWallet(models.Model):
 
 class CaptainDocument(models.Model):
     class DocumentType(models.TextChoices):
-        NATIONAL_ID = "NATIONAL_ID", "National ID"
-        DRIVING_LICENSE = "DRIVING_LICENSE", "Driving License"
-        VEHICLE_LICENSE = "VEHICLE_LICENSE", "Vehicle License"
-        OTHER = "OTHER", "Other"
+        NATIONAL_ID = "NATIONAL_ID", "بطاقة الرقم القومي"
+        DRIVING_LICENSE = "DRIVING_LICENSE", "رخصة القيادة"
+        VEHICLE_LICENSE = "VEHICLE_LICENSE", "رخصة المركبة"
+        CRIMINAL_RECORD = "CRIMINAL_RECORD", "صحيفة الحالة الجنائية (فيش وتشبيه)"
+        OTHER = "OTHER", "أخرى"
 
     class ReviewStatus(models.TextChoices):
-        PENDING = "PENDING", "Pending"
-        APPROVED = "APPROVED", "Approved"
-        REJECTED = "REJECTED", "Rejected"
+        PENDING = "PENDING", "قيد المراجعة"
+        APPROVED = "APPROVED", "تمت الموافقة"
+        REJECTED = "REJECTED", "مرفوض"
 
     captain = models.ForeignKey(
         CaptainProfile,
@@ -300,3 +301,48 @@ class WalletTopUpRequest(models.Model):
             f"{self.captain.user.username} - "
             f"{self.amount} EGP - {self.status}"
         )
+
+
+class Notification(models.Model):
+    class Type(models.TextChoices):
+        OFFER_RECEIVED = "OFFER_RECEIVED", "عرض جديد"
+        OFFER_ACCEPTED = "OFFER_ACCEPTED", "تم قبول عرضك"
+        TRIP_STATUS_CHANGED = "TRIP_STATUS_CHANGED", "تحديث حالة الرحلة"
+        TRIP_COMPLETED = "TRIP_COMPLETED", "تم إكمال الرحلة"
+        TRIP_CANCELLED = "TRIP_CANCELLED", "تم إلغاء الرحلة"
+        REVIEW_RECEIVED = "REVIEW_RECEIVED", "تقييم جديد"
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="notifications",
+    )
+    type = models.CharField(
+        max_length=30,
+        choices=Type.choices,
+        db_index=True,
+    )
+    title = models.CharField(max_length=200)
+    message = models.TextField(blank=True)
+    payload = models.JSONField(default=dict, blank=True)
+    is_read = models.BooleanField(default=False, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(
+                fields=["user", "is_read", "-created_at"],
+                name="acct_notif_user_read_idx",
+            ),
+            models.Index(
+                fields=["user", "-created_at"],
+                name="acct_notif_user_created_idx",
+            ),
+        ]
+        verbose_name = "Notification"
+        verbose_name_plural = "Notifications"
+
+    def __str__(self):
+        return f"Notification for {self.user.username}: {self.title}"

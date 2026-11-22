@@ -1,0 +1,1543 @@
+﻿@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap');
+
+:root {
+    --sg-bg: #0b1120;
+    --sg-surface: #151e30;
+    --sg-surface-light: #1d2940;
+    --sg-primary: #ff7a1a;
+    --sg-primary-hover: #ff9142;
+    --sg-text: #f4f7fb;
+    --sg-muted: #a4b0c3;
+    --sg-border: #2b3850;
+    --sg-success: #22c55e;
+    --sg-danger: #ef4444;
+    --sg-radius: 16px;
+    --sg-shadow: 0 12px 32px rgba(0, 0, 0, .22);
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html {
+    direction: rtl;
+    scroll-behavior: smooth;
+}
+
+body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--sg-bg);
+    color: var(--sg-text);
+    font-family: 'Cairo', Tahoma, Arial, sans-serif;
+    line-height: 1.8;
+}
+
+a {
+    color: var(--sg-primary);
+    text-decoration: none;
+    transition: color .2s ease;
+}
+
+a:hover {
+    color: var(--sg-primary-hover);
+}
+
+h1, h2, h3, h4 {
+    line-height: 1.4;
+    font-weight: 800;
+}
+
+h1 {
+    font-size: clamp(1.7rem, 4vw, 2.4rem);
+}
+
+h2 {
+    font-size: 1.45rem;
+}
+
+p {
+    color: var(--sg-muted);
+}
+
+button,
+input,
+select,
+textarea {
+    font: inherit;
+}
+
+button,
+.sg-button {
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 10px 20px;
+    border: 0;
+    border-radius: 10px;
+    background: var(--sg-primary);
+    color: #17120e;
+    font-weight: 800;
+    cursor: pointer;
+    transition: background .2s ease, transform .2s ease;
+}
+
+button:hover,
+.sg-button:hover {
+    background: var(--sg-primary-hover);
+    color: #17120e;
+    transform: translateY(-1px);
+}
+
+button:disabled {
+    opacity: .55;
+    cursor: not-allowed;
+    transform: none;
+}
+
+input,
+select,
+textarea {
+    width: 100%;
+    min-height: 46px;
+    padding: 10px 13px;
+    border: 1px solid var(--sg-border);
+    border-radius: 10px;
+    background: #0e1728;
+    color: var(--sg-text);
+    outline: none;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+    border-color: var(--sg-primary);
+    box-shadow: 0 0 0 3px rgba(255, 122, 26, .13);
+}
+
+label {
+    display: block;
+    margin-bottom: 6px;
+    color: var(--sg-text);
+    font-weight: 600;
+}
+
+form p {
+    margin: 0 0 16px;
+}
+
+form ul.errorlist {
+    color: #fca5a5;
+}
+
+hr {
+    border: 0;
+    border-top: 1px solid var(--sg-border);
+    margin: 24px 0;
+}
+
+.sg-container {
+    width: min(1180px, calc(100% - 32px));
+    margin-inline: auto;
+}
+
+/* SNIPER GO Captain Header */
+.sg-navbar {
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    background: #101827;
+    color: #ffffff;
+    padding: 22px 0;
+    margin-bottom: 24px;
+    border-bottom: 3px solid #ff8a00;
+    backdrop-filter: blur(12px);
+}
+
+.sg-navbar-inner {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    min-height: 76px;
+}
+
+.sg-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--sg-text);
+    font-size: 1.25rem;
+    font-weight: 800;
+    letter-spacing: .5px;
+}
+
+.sg-brand-mark {
+    display: grid;
+    place-items: center;
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    background: var(--sg-primary);
+    color: #17120e;
+    font-weight: 900;
+}
+
+.sg-main {
+    padding-block: 30px 50px;
+}
+
+.sg-page-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.sg-page-heading h1,
+.sg-page-heading p {
+    margin-block: 0 8px;
+}
+
+.sg-grid {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: 20px;
+}
+
+.sg-col-12 {
+    grid-column: span 12;
+}
+
+.sg-col-8 {
+    grid-column: span 8;
+}
+
+.sg-col-6 {
+    grid-column: span 6;
+}
+
+.sg-col-4 {
+    grid-column: span 4;
+}
+
+.sg-card {
+    min-width: 0;
+    padding: 22px;
+    border: 1px solid var(--sg-border);
+    border-radius: var(--sg-radius);
+    background: var(--sg-surface);
+    box-shadow: var(--sg-shadow);
+}
+
+.sg-card h2,
+.sg-card h3 {
+    margin-top: 0;
+}
+
+.sg-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.sg-stat-label {
+    color: var(--sg-muted);
+    font-size: .92rem;
+}
+
+.sg-stat-value {
+    color: var(--sg-text);
+    font-size: 1.7rem;
+    font-weight: 800;
+    direction: rtl;
+}
+
+.sg-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 16px;
+}
+
+.sg-button-secondary {
+    border: 1px solid var(--sg-border);
+    background: var(--sg-surface-light);
+    color: var(--sg-text);
+}
+
+.sg-button-secondary:hover {
+    background: #293852;
+    color: var(--sg-text);
+}
+
+.sg-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    width: fit-content;
+    padding: 4px 12px;
+    border: 1px solid var(--sg-border);
+    border-radius: 999px;
+    background: var(--sg-surface-light);
+    color: var(--sg-text);
+    font-size: .88rem;
+}
+
+.sg-status-success {
+    color: #86efac;
+    border-color: rgba(34, 197, 94, .3);
+}
+
+.sg-status-warning {
+    color: #fdba74;
+    border-color: rgba(255, 122, 26, .3);
+}
+
+.sg-status-danger {
+    color: #fca5a5;
+    border-color: rgba(239, 68, 68, .3);
+}
+
+.sg-alert {
+    padding: 12px 16px;
+    margin-bottom: 14px;
+    border: 1px solid var(--sg-border);
+    border-radius: 10px;
+    background: var(--sg-surface-light);
+}
+
+.sg-alert-success {
+    border-color: rgba(34, 197, 94, .35);
+}
+
+.sg-alert-error {
+    border-color: rgba(239, 68, 68, .4);
+}
+
+.sg-list {
+    display: grid;
+    gap: 12px;
+}
+
+.sg-muted {
+    color: var(--sg-muted);
+}
+
+.sg-auth {
+    display: grid;
+    place-items: center;
+    min-height: 100vh;
+    padding: 24px 16px;
+    background:
+        radial-gradient(ellipse at top, rgba(255, 122, 26, .10), transparent 45%),
+        var(--sg-bg);
+}
+
+.sg-auth-card {
+    width: min(460px, 100%);
+    padding: clamp(22px, 5vw, 36px);
+    border: 1px solid var(--sg-border);
+    border-radius: 22px;
+    background: var(--sg-surface);
+    box-shadow: var(--sg-shadow);
+}
+
+.sg-auth-card .sg-brand {
+    margin-bottom: 18px;
+}
+
+.sg-auth-card form {
+    margin-top: 22px;
+}
+
+.sg-auth-links {
+    display: grid;
+    gap: 12px;
+    margin-top: 22px;
+}
+
+.sg-auth-links a {
+    display: block;
+    padding: 10px 14px;
+    border: 1px solid var(--sg-border);
+    border-radius: 10px;
+    text-align: center;
+}
+
+.sg-auth-links a:hover {
+    border-color: var(--sg-primary);
+}
+
+.sg-divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: var(--sg-muted);
+    margin-block: 20px;
+}
+
+.sg-divider::before,
+.sg-divider::after {
+    content: "";
+    height: 1px;
+    flex: 1;
+    background: var(--sg-border);
+}
+
+@media (max-width: 760px) {
+    .sg-container {
+        width: min(100% - 24px, 1180px);
+    }
+
+    .sg-navbar-inner {
+        min-height: 64px;
+    }
+
+    .sg-main {
+        padding-top: 20px;
+    }
+
+    .sg-card {
+        padding: 16px;
+    }
+
+    .sg-col-8,
+    .sg-col-6,
+    .sg-col-4 {
+        grid-column: span 12;
+    }
+
+    button,
+    .sg-button {
+        max-width: 100%;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        scroll-behavior: auto !important;
+        transition: none !important;
+    }
+}
+/* Captain dashboard */
+body > h1,
+body > h2 {
+    text-align: center;
+}
+
+body > h1 {
+    margin: 28px 16px 4px;
+    color: var(--sg-primary);
+}
+
+body > h2 {
+    margin: 0 16px 24px;
+}
+
+body > section,
+body > form,
+body > p,
+body > script {
+    max-width: 1180px;
+}
+
+body > section,
+body > form,
+body > p {
+    margin-inline: auto;
+}
+
+.wallet-summary,
+#my-trips-section,
+#pending-collections-section,
+#available-trips-section {
+    margin: 18px auto;
+    padding: 22px;
+    border: 1px solid var(--sg-border);
+    border-radius: var(--sg-radius);
+    background: var(--sg-surface);
+    box-shadow: var(--sg-shadow);
+}
+
+.wallet-summary h2,
+#my-trips-section h2,
+#pending-collections-section h2,
+#available-trips-section h2 {
+    margin-top: 0;
+    color: var(--sg-text);
+}
+
+#my-trips-list article,
+#available-trips-list article,
+#pending-collections-list article {
+    border: 1px solid var(--sg-border) !important;
+    border-radius: 12px;
+    background: var(--sg-surface-light);
+    color: var(--sg-text);
+}
+
+#my-trips-list article p,
+#available-trips-list article p,
+#pending-collections-list article p {
+    overflow-wrap: anywhere;
+}
+
+body > form[action*="logout"] {
+    margin: 24px auto;
+    padding: 0 16px 30px;
+}
+
+@media (max-width: 700px) {
+    .wallet-summary,
+    #my-trips-section,
+    #pending-collections-section,
+    #available-trips-section {
+        width: calc(100% - 24px);
+        padding: 16px;
+    }
+}
+/* Trip cards */
+#my-trips-list,
+#available-trips-list,
+#pending-collections-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+    gap: 16px;
+    margin-top: 18px;
+}
+
+#my-trips-list article,
+#available-trips-list article,
+#pending-collections-list article {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 0 !important;
+    padding: 20px !important;
+    border: 1px solid var(--sg-border) !important;
+    border-radius: 16px;
+    background: linear-gradient(145deg, var(--sg-surface-light), var(--sg-surface));
+    box-shadow: var(--sg-shadow);
+}
+
+#my-trips-list article h3,
+#available-trips-list article h3,
+#pending-collections-list article h3 {
+    margin: 0 0 8px;
+    color: var(--sg-primary);
+    font-size: 1.15rem;
+}
+
+#my-trips-list article p,
+#available-trips-list article p,
+#pending-collections-list article p {
+    margin: 0;
+    color: var(--sg-text);
+    overflow-wrap: anywhere;
+}
+
+#my-trips-list article form,
+#available-trips-list article form {
+    display: grid;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+#my-trips-list article button,
+#available-trips-list article button,
+#pending-collections-list article button {
+    width: 100%;
+    margin-top: 8px;
+}
+
+#my-trips-list article [role="status"],
+#available-trips-list article [role="status"],
+#pending-collections-list article [role="status"] {
+    color: var(--sg-muted);
+    font-size: .9rem;
+}
+
+@media (max-width: 700px) {
+    #my-trips-list,
+    #available-trips-list,
+    #pending-collections-list {
+        grid-template-columns: 1fr;
+    }
+}
+
+
+
+
+.sg-navbar-content {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.sg-navbar h1 {
+    margin: 0 0 6px;
+    color: #ff8a00;
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: 1px;
+}
+
+.sg-navbar p {
+    margin: 0;
+    color: #e2e8f0;
+}
+
+.sg-captain-status {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.sg-captain-status span {
+    display: inline-flex;
+    align-items: center;
+    padding: 9px 14px;
+    border: 1px solid #344256;
+    border-radius: 10px;
+    background: #1d293b;
+    color: #ffffff;
+    font-size: 14px;
+}
+
+@media (max-width: 600px) {
+    .sg-navbar-content {
+        align-items: stretch;
+    }
+
+    .sg-captain-status {
+        flex-direction: column;
+    }
+}
+
+/* Captain dashboard layout improvements */
+body > header.sg-navbar {
+    width: 100%;
+    margin: 0 0 24px;
+    padding: 18px 0;
+}
+
+body > header.sg-navbar .sg-container {
+    width: min(1180px, calc(100% - 32px));
+    margin-inline: auto;
+}
+
+body > header.sg-navbar h1 {
+    margin: 0 0 4px;
+    text-align: right;
+}
+
+body > header.sg-navbar p {
+    margin: 0;
+}
+
+body > header.sg-navbar .sg-captain-status {
+    justify-content: flex-start;
+}
+
+body > header.sg-navbar .sg-captain-status span {
+    white-space: normal;
+}
+
+/* Consistent dashboard sections */
+body > section,
+body > form,
+body > p {
+    width: min(1180px, calc(100% - 32px));
+}
+
+.wallet-summary,
+#my-trips-section,
+#pending-collections-section,
+#available-trips-section {
+    margin-block: 20px;
+}
+
+/* Wallet values */
+.wallet-summary > p {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 10px 0;
+    margin: 0;
+    border-bottom: 1px solid var(--sg-border);
+}
+
+.wallet-summary > p:last-child {
+    border-bottom: 0;
+}
+
+.wallet-summary strong {
+    color: var(--sg-primary);
+    white-space: nowrap;
+}
+
+/* Forms and service actions */
+body > form[action*="logout"] {
+    width: min(1180px, calc(100% - 32px));
+}
+
+#paymob-topup-form {
+    display: grid;
+    gap: 10px;
+    max-width: 460px;
+}
+
+@media (max-width: 600px) {
+    body > header.sg-navbar .sg-container {
+        width: calc(100% - 24px);
+    }
+
+    body > header.sg-navbar .sg-navbar-content {
+        align-items: flex-start;
+    }
+
+    body > section,
+    body > form,
+    body > p {
+        width: calc(100% - 24px);
+    }
+
+    .wallet-summary > p {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    .wallet-summary strong {
+        white-space: normal;
+    }
+}
+
+
+/* SNIPER GO - Customer Booking Page */
+body:has(#booking-form) {
+    background: var(--sg-bg, #f3f5f8);
+}
+
+body:has(#booking-form) > header:not(.sg-navbar) {
+    background: var(--sg-dark, #111827);
+    color: #fff;
+    padding: 18px max(3%, calc((100% - 1180px) / 2));
+    box-shadow: 0 4px 18px rgba(16, 24, 40, 0.12);
+}
+
+body:has(#booking-form) > header h1 {
+    color: var(--sg-primary, #facc15);
+}
+
+body:has(#booking-form) > main {
+    width: min(1180px, calc(100% - 32px));
+    margin: 28px auto;
+    align-items: start;
+    gap: 24px;
+}
+
+body:has(#booking-form) .panel {
+    background: var(--sg-surface, #fff);
+    border: 1px solid var(--sg-border, #e5e7eb);
+    border-radius: 18px;
+    padding: 24px;
+    box-shadow: 0 8px 28px rgba(16, 24, 40, 0.06);
+    min-width: 0;
+}
+
+body:has(#booking-form) .panel h2 {
+    color: var(--sg-text, #182230);
+    line-height: 1.5;
+}
+
+body:has(#booking-form) label {
+    color: var(--sg-text, #182230);
+}
+
+body:has(#booking-form) input,
+body:has(#booking-form) select {
+    min-height: 46px;
+    border-color: var(--sg-border, #d0d5dd);
+}
+
+body:has(#booking-form) .primary {
+    min-height: 48px;
+    border-radius: 12px;
+    transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+body:has(#booking-form) .primary:hover:not(:disabled) {
+    transform: translateY(-1px);
+}
+
+body:has(#booking-form) #map {
+    min-height: 380px;
+    border: 1px solid var(--sg-border, #e5e7eb);
+    overflow: hidden;
+}
+
+body:has(#booking-form) #trip-tracking {
+    width: min(1180px, calc(100% - 32px));
+    margin: 0 auto 28px;
+}
+
+body:has(#booking-form) #trip-tracking.visible {
+    display: block;
+}
+
+body:has(#booking-form) .trip-offer {
+    background: var(--sg-surface, #fff);
+}
+
+@media (max-width: 760px) {
+    body:has(#booking-form) > main {
+        width: calc(100% - 24px);
+        margin: 16px auto;
+        grid-template-columns: 1fr;
+        gap: 16px;
+    }
+
+    body:has(#booking-form) .panel {
+        padding: 18px;
+        border-radius: 14px;
+    }
+
+    body:has(#booking-form) #map {
+        height: 380px;
+        min-height: 320px;
+    }
+
+    body:has(#booking-form) #trip-tracking {
+        width: calc(100% - 24px);
+    }
+}
+
+/* Customer booking page - desktop layout */
+@media (min-width: 761px) {
+    body:has(#booking-form) > main {
+        width: min(1400px, calc(100% - 48px));
+        grid-template-columns: minmax(340px, 0.85fr) minmax(0, 1.15fr);
+        gap: 24px;
+    }
+
+    body:has(#booking-form) .panel {
+        padding: 28px;
+    }
+
+    body:has(#booking-form) #map {
+        height: 560px;
+    }
+}
+
+/* Captain Offers - SNIPER GO */
+
+.sg-section {
+    margin: 28px 0;
+    padding: 22px;
+    background: var(--card-bg, #fff);
+    border: 1px solid var(--border-color, #e5e7eb);
+    border-radius: 18px;
+}
+
+.sg-section-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.sg-section-heading h2 {
+    margin: 0 0 6px;
+}
+
+.sg-section-heading p {
+    margin: 0;
+    color: #777;
+    font-size: 14px;
+}
+
+#my-offers-count {
+    padding: 7px 13px;
+    border-radius: 20px;
+    background: #eef2ff;
+    color: #3730a3;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+#offer-submit-feedback {
+    padding: 12px 15px;
+    border-radius: 10px;
+    margin: 12px 0;
+}
+
+#offer-submit-feedback:empty {
+    display: none;
+}
+
+#offer-submit-feedback[data-type="success"] {
+    background: #ecfdf3;
+    color: #137547;
+    border: 1px solid #b7ebc9;
+}
+
+.captain-offer-card {
+    padding: 20px;
+    margin: 14px 0;
+    border: 1px solid #e5e7eb;
+    border-radius: 16px;
+    background: #fff;
+    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.04);
+    transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.captain-offer-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 7px 20px rgba(0, 0, 0, 0.07);
+}
+
+.captain-offer-header,
+.captain-offer-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.captain-offer-header h3 {
+    margin: 0;
+}
+
+.offer-status {
+    display: inline-flex;
+    padding: 7px 12px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.offer-status.pending {
+    color: #925d00;
+    background: #fff4d6;
+}
+
+.offer-status.accepted {
+    color: #137547;
+    background: #dcfce7;
+}
+
+.offer-status.rejected,
+.offer-status.expired {
+    color: #991b1b;
+    background: #fee2e2;
+}
+
+.offer-route {
+    margin: 18px 0;
+    padding: 12px 15px;
+    background: #f8fafc;
+    border-radius: 10px;
+}
+
+.offer-route p {
+    margin: 7px 0;
+}
+
+.captain-offer-price {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 15px 0;
+    border-top: 1px solid #eee;
+    border-bottom: 1px solid #eee;
+}
+
+.captain-offer-price strong {
+    font-size: 22px;
+    color: #137547;
+}
+
+.captain-offer-footer {
+    margin-top: 15px;
+    color: #777;
+    font-size: 13px;
+}
+
+.offer-countdown {
+    color: #925d00;
+    font-weight: 700;
+}
+
+.offer-countdown.expired {
+    color: #991b1b;
+}
+
+.offer-success-note {
+    margin-bottom: 0;
+    color: #137547;
+    font-weight: 600;
+}
+
+@media (max-width: 600px) {
+    .sg-section {
+        padding: 15px;
+    }
+
+    .captain-offer-card {
+        padding: 15px;
+    }
+
+    .sg-section-heading {
+        align-items: flex-start;
+    }
+
+    .captain-offer-price strong {
+        font-size: 19px;
+    }
+}
+
+/* SNIPER GO - Captain Offers Dark Theme Fix */
+#my-offers-section {
+    background: #151f32 !important;
+    color: #f8fafc !important;
+    border: 1px solid #293750;
+}
+
+#my-offers-section h2,
+#my-offers-section h3,
+#my-offers-section p {
+    color: inherit;
+}
+
+#my-offers-section .captain-offer-card {
+    background: #1c2940 !important;
+    color: #f8fafc !important;
+    border: 1px solid #34445f;
+}
+
+#my-offers-section .offer-route {
+    background: #111a2b !important;
+    color: #dbe5f4 !important;
+}
+
+#my-offers-section .offer-route p,
+#my-offers-section .captain-offer-footer {
+    color: #cbd5e1;
+}
+
+#my-offers-section .captain-offer-header h3 {
+    color: #ff8617;
+}
+
+#my-offers-section .captain-offer-price {
+    border-color: #34445f;
+}
+
+#my-offers-section #my-offers-status {
+    color: #cbd5e1;
+}
+
+/* SNIPER GO - Wallet Dashboard */
+
+.sg-wallet {
+    padding: 24px;
+    background: #151f32;
+    border: 1px solid #293750;
+    border-radius: 18px;
+    color: #f8fafc;
+}
+
+.sg-wallet-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 22px;
+    gap: 12px;
+}
+
+.sg-wallet-heading h2 {
+    margin: 0;
+    color: #fff;
+}
+
+.sg-wallet-heading span {
+    color: #aebbd0;
+    font-size: 13px;
+}
+
+.sg-wallet-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.sg-wallet-card {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 22px;
+    background: #1c2940;
+    border: 1px solid #34445f;
+    border-radius: 15px;
+}
+
+.sg-wallet-card span {
+    color: #cbd5e1;
+    font-size: 14px;
+}
+
+.sg-wallet-card strong {
+    color: #fff;
+    font-size: 27px;
+    direction: ltr;
+    text-align: right;
+}
+
+.sg-wallet-card small {
+    color: #94a3b8;
+}
+
+.sg-wallet-available {
+    background: linear-gradient(145deg, #263b45, #1c2940);
+    border-color: #f58a24;
+}
+
+.sg-wallet-available strong {
+    color: #ff9b38;
+}
+
+@media (max-width: 700px) {
+    .sg-wallet-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .sg-wallet-card {
+        padding: 18px;
+    }
+}
+
+/* SNIPER GO - Landing Page Hero */
+.sg-hero {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding-block: 48px 24px;
+    max-width: min(900px, 100%);
+    margin-inline: auto;
+}
+
+.sg-hero .sg-brand {
+    justify-content: center;
+    margin-bottom: 28px;
+}
+
+.sg-hero h1 {
+    font-size: clamp(2rem, 6vw, 3rem);
+    margin: 0 0 12px;
+    color: var(--sg-text);
+}
+
+.sg-hero p.lead {
+    color: var(--sg-muted);
+    margin: 0 0 32px;
+    font-size: clamp(1rem, 2.5vw, 1.3rem);
+}
+
+.sg-hero-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    width: 100%;
+    margin-bottom: 32px;
+}
+
+.sg-hero-card {
+    padding: 26px;
+    text-align: center;
+    border: 1px solid var(--sg-border);
+    border-radius: var(--sg-radius);
+    background: var(--sg-surface);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.sg-hero-card h2 {
+    margin: 0 0 10px;
+    color: var(--sg-text);
+    font-size: clamp(1.25rem, 3vw, 1.5rem);
+}
+
+.sg-hero-card p {
+    margin: 0 0 20px;
+    color: var(--sg-muted);
+    font-size: 0.98rem;
+}
+
+.sg-hero-card .sg-button {
+    width: 100%;
+    min-width: 0;
+    font-size: 1rem;
+    padding: 12px 20px;
+}
+
+.sg-hero-card .sg-button-secondary {
+    margin-top: 10px;
+    width: 100%;
+    min-width: 0;
+}
+
+.sg-hero-cta {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+}
+
+.sg-hero-cta .sg-button {
+    min-width: 220px;
+    max-width: 100%;
+    font-size: 1rem;
+    padding: 12px 26px;
+}
+
+@media (max-width: 640px) {
+    .sg-hero-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .sg-hero {
+        padding-block: 32px 16px;
+    }
+}
+
+/* SNIPER GO - Captain status toggle */
+#status-message.sg-status-success {
+    color: #86efac;
+    font-weight: 600;
+    text-align: center;
+    margin-top: 10px;
+}
+
+#status-message.sg-status-danger {
+    color: #fca5a5;
+    font-weight: 600;
+    text-align: center;
+    margin-top: 10px;
+}
+
+/* Loading indicators for polling and actions */
+.sg-loading {
+    color: #667085;
+    font-size: 13px;
+    font-style: italic;
+}
+
+.sg-error-inline {
+    color: #b42318;
+    font-size: 13px;
+    margin-top: 6px;
+}
+
+/* SNIPER GO - Captain Wallet page */
+.sg-status-pending {
+    color: #fdba74;
+    border-color: rgba(255, 122, 26, .3);
+}
+
+.sg-wallet-back {
+    display: inline-flex;
+    align-items: center;
+    padding: 10px 16px;
+    border-radius: 10px;
+    text-decoration: none;
+}
+
+.sg-history-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: 14px 16px;
+    border: 1px solid var(--sg-border);
+    border-radius: 12px;
+    background: var(--sg-surface);
+}
+
+.sg-history-main {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.sg-history-type {
+    font-weight: 600;
+    color: var(--sg-text);
+}
+
+.sg-history-meta {
+    color: var(--sg-text-muted, #94a3b8);
+    font-size: .85rem;
+}
+
+.sg-history-date {
+    color: var(--sg-text-muted, #94a3b8);
+    font-size: .8rem;
+    direction: ltr;
+    text-align: right;
+}
+
+.sg-history-side {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+}
+
+.sg-history-amount {
+    font-weight: 600;
+    color: var(--sg-text);
+    white-space: nowrap;
+}
+
+@media (max-width: 600px) {
+    .sg-history-row {
+        flex-direction: column;
+    }
+
+    .sg-history-side {
+        align-items: flex-start;
+    }
+}
+
+/* SNIPER GO - Trip Ratings */
+.rating-section {
+    margin-top: 20px;
+    padding: 16px;
+    border: 1px solid var(--sg-border);
+    border-radius: var(--sg-radius);
+    background: var(--sg-surface);
+}
+
+.rating-section h3 {
+    margin-top: 0;
+    margin-bottom: 12px;
+    color: var(--sg-text);
+}
+
+.rating-section p {
+    margin: 8px 0;
+    color: var(--sg-muted);
+}
+
+.star-rating {
+    display: flex;
+    flex-direction: row-reverse;
+    gap: 6px;
+    margin: 12px 0;
+}
+
+.star-btn {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    padding: 4px;
+    color: #9ca3af;
+    transition: color .2s ease;
+}
+
+.star-btn:hover,
+.star-btn:hover ~ .star-btn {
+    color: #facc15;
+}
+
+.rating-section textarea {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid var(--sg-border);
+    border-radius: 10px;
+    background: var(--sg-bg);
+    color: var(--sg-text);
+    font-family: inherit;
+    resize: vertical;
+}
+
+.submit-rating-btn {
+    margin-top: 12px;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 10px;
+    background: var(--sg-primary);
+    color: #111827;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.submit-rating-btn:disabled {
+    opacity: .5;
+    cursor: not-allowed;
+}
+
+.review-display {
+    margin-top: 20px;
+    padding: 16px;
+    border: 1px solid var(--sg-border);
+    border-radius: var(--sg-radius);
+    background: var(--sg-surface);
+}
+
+.review-display h3 {
+    margin-top: 0;
+    margin-bottom: 12px;
+    color: var(--sg-text);
+}
+
+.review-display p {
+    margin: 6px 0;
+    color: var(--sg-muted);
+}
+
+.review-display p.muted {
+    font-size: .85rem;
+    color: var(--sg-muted);
+}
+
+.captain-rating-summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.rating-average {
+    font-size: 24px;
+    font-weight: 800;
+    color: var(--sg-primary);
+}
+
+.rating-star {
+    font-size: 20px;
+    color: #facc15;
+}
+
+.rating-count {
+    font-size: 14px;
+    color: var(--sg-muted);
+}
+
+.captain-review-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 14px 16px;
+    border: 1px solid var(--sg-border);
+    border-radius: var(--sg-radius);
+    background: var(--sg-surface-light);
+    margin-bottom: 12px;
+}
+
+.captain-review-card h3 {
+    margin: 0;
+    font-size: 16px;
+    color: var(--sg-text);
+}
+
+.captain-review-card p {
+    margin: 4px 0;
+    color: var(--sg-muted);
+}
+
+.captain-review-card p.review-rating {
+    color: var(--sg-primary);
+    font-weight: 700;
+}
+
+.captain-review-card p.review-date {
+    font-size: .85rem;
+    color: var(--sg-muted);
+    margin-top: 8px;
+}
+
+/* SNIPER GO - Notifications UI */
+.sg-notification-item {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    transition: border-color .2s ease, background .2s ease;
+}
+
+.sg-notification-item.sg-notification-unread {
+    border-inline-start: 4px solid var(--sg-primary);
+    background: #162135;
+}
+
+.sg-notification-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.sg-notification-header h3 {
+    margin: 0;
+    font-size: 1.05rem;
+    color: var(--sg-text);
+}
+
+.sg-notification-message {
+    margin: 0;
+    color: var(--sg-text);
+    font-size: .95rem;
+    overflow-wrap: anywhere;
+}
+
+.sg-notification-meta {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    font-size: .85rem;
+}
+
+.sg-notification-type {
+    color: var(--sg-primary);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .3px;
+}
+
+.sg-notification-date {
+    color: var(--sg-muted);
+    direction: ltr;
+}
+
+/* Responsive for notifications page */
+@media (max-width: 600px) {
+    .sg-notification-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .sg-notification-meta {
+        flex-direction: column;
+        gap: 4px;
+    }
+}

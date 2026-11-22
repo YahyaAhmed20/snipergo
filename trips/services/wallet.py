@@ -1,3 +1,5 @@
+import logging
+
 from decimal import Decimal, ROUND_HALF_UP
 
 from django.core.exceptions import ValidationError
@@ -10,8 +12,14 @@ from trips.models import (
     TripFinancialRecord,
 )
 
+logger = logging.getLogger(__name__)
 
 CENT = Decimal("0.01")
+
+
+class InsufficientCommissionBalance(ValidationError):
+    """Raised when a captain cannot currently cover trip commission."""
+
 
 def _normalize_amount(amount):
     try:
@@ -97,6 +105,12 @@ def credit_wallet(*, captain, amount, reference, description=""):
         amount=amount,
         reference=reference,
         description=description,
+    )
+
+    transaction.on_commit(
+        lambda captain_id=captain.pk: _settle_due_commissions_after_topup(
+            captain_id=captain_id
+        )
     )
 
     return wallet
@@ -252,7 +266,7 @@ def deduct_trip_commission(*, trip_financial_record_id):
     )
 
     if wallet.available_balance < extra_amount:
-        raise ValidationError(
+        raise InsufficientCommissionBalance(
             "Insufficient available wallet balance to settle commission."
         )
 
@@ -260,7 +274,7 @@ def deduct_trip_commission(*, trip_financial_record_id):
     wallet.balance -= record.commission_amount
 
     if wallet.balance < 0:
-        raise ValidationError(
+        raise InsufficientCommissionBalance(
             "Insufficient wallet balance to pay trip commission."
         )
 
@@ -305,6 +319,88 @@ def deduct_trip_commission(*, trip_financial_record_id):
     record.save(update_fields=["commission_status"])
 
     return wallet
+
+
+@transaction.atomic
+def settle_due_commissions(*, captain):
+    due_transactions = (
+        FinancialTransaction.objects
+        .filter(
+            captain=captain,
+            transaction_type=(
+                FinancialTransaction.TransactionType.COMMISSION_DUE
+            ),
+            financial_record__commission_status=(
+                TripFinancialRecord.CommissionStatus.PENDING
+            ),
+        )
+        .order_by("created_at", "pk")
+    )
+
+    for item in due_transactions:
+        try:
+            with transaction.atomic():
+                due = (
+                    FinancialTransaction.objects
+                    .select_for_update()
+                    .select_related("financial_record", "wallet")
+                    .get(pk=item.pk)
+                )
+
+                record = due.financial_record
+
+                if record is None:
+                    raise ValidationError(
+                        "A commission due transaction has no financial record."
+                    )
+
+                if (
+                    record.commission_status
+                    != TripFinancialRecord.CommissionStatus.PENDING
+                ):
+                    continue
+
+                if (
+                    due.captain_id != captain.pk
+                    or due.captain_id != record.trip.captain_id
+                    or due.wallet_id is None
+                    or due.wallet.captain_id != captain.pk
+                    or due.amount != record.commission_amount
+                ):
+                    raise ValidationError(
+                        "The outstanding commission transaction is inconsistent."
+                    )
+
+                deduct_trip_commission(
+                    trip_financial_record_id=record.pk,
+                )
+
+        except InsufficientCommissionBalance:
+            # Keep this commission outstanding until a later top-up.
+            continue
+
+        except Exception:
+            logger.exception(
+                "Failed to settle commission due transaction_id=%s "
+                "for captain_id=%s",
+                item.pk,
+                captain.pk,
+            )
+            continue
+
+
+def _settle_due_commissions_after_topup(*, captain_id):
+    from accounts.models import CaptainProfile
+
+    try:
+        captain = CaptainProfile.objects.get(pk=captain_id)
+        settle_due_commissions(captain=captain)
+    except Exception:
+        logger.exception(
+            "Failed to settle outstanding commissions after wallet top-up "
+            "for captain_id=%s",
+            captain_id,
+        )
 
 
 @transaction.atomic

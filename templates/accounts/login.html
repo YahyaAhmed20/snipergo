@@ -1,35 +1,51 @@
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>SNIPER GO - Login</title>
-</head>
-<body>
-    <h1>SNIPER GO</h1>
-    <h2>Login</h2>
+{% extends "base.html" %}
 
-    {% if form.errors %}
-        <p>Invalid username or password.</p>
-    {% endif %}
+{% block title %}تسجيل الدخول | SNIPER GO{% endblock %}
 
-    <form method="post">
-        {% csrf_token %}
-        {{ form.as_p }}
-        <button type="submit">Log in</button>
-    </form>
+{% block header %}{% endblock %}
 
-    <p>
-        <a href="{% url 'accounts:register_customer' %}">
-            Register as Customer
+{% block content %}
+<div class="sg-auth">
+    <div class="sg-auth-card">
+        <a class="sg-brand" href="{% url 'home' %}">
+            <div class="sg-brand-mark">SG</div>
+            <span>SNIPER GO</span>
         </a>
-    </p>
 
-    <p>
-        <a href="{% url 'accounts:register_captain' %}">
-            Register as Captain
-        </a>
-    </p>
-</body>
-</html>
+        <h1>تسجيل الدخول</h1>
+        <p>سجّل الدخول لمتابعة رحلاتك.</p>
+
+        {% if form.errors %}
+            <div class="sg-alert sg-alert-error">
+                اسم المستخدم أو كلمة المرور غير صحيحة.
+            </div>
+        {% endif %}
+
+        <div class="sg-auth-links">
+            <a href="{% url 'google_login' %}">
+                المتابعة باستخدام Google
+            </a>
+        </div>
+
+        <div class="sg-divider">أو</div>
+
+        <form method="post">
+            {% csrf_token %}
+            {{ form.as_p }}
+            <button type="submit" class="sg-button" style="width: 100%;">
+                تسجيل الدخول
+            </button>
+        </form>
+
+        <div class="sg-auth-links">
+            <a href="{% url 'accounts:register_customer' %}">
+                إنشاء حساب راكب
+            </a>
+            <a href="{% url 'accounts:register_captain' %}">
+                التسجيل ككابتن
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,27 +1,74 @@
+from asgiref.sync import async_to_sync
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
+from datetime import timedelta
+
+from trips.services.offers import TRIP_REQUEST_EXPIRY_MINUTES
 from trips.services.wallet import (
     deduct_trip_commission,
     release_trip_commission_reservation,
     reserve_trip_commission,
+    InsufficientCommissionBalance,
 )
-from accounts.models import CaptainProfile
+from accounts.models import CaptainProfile, CaptainWallet, Notification, User
+from accounts.services.notifications import (
+    create_notification,
+    dispatch_notification_websocket,
+)
 from accounts.services.reviews import validate_captain_documents
-from trips.models import CommissionConfig, Trip
+from trips.models import CommissionConfig, FinancialTransaction, Trip
 from trips.services.finance import create_trip_financial_record
 from vehicles.models import Vehicle
 from decimal import Decimal, InvalidOperation
 
 
-@transaction.atomic
 def accept_trip(*, trip_id, captain):
+    from trips.services.offers import (
+        expire_trip_if_needed,
+        TRIP_REQUEST_EXPIRY_MINUTES,
+        _ExpiredTripRequest,
+    )
+
+    if expire_trip_if_needed(trip_id=trip_id):
+        raise ValidationError("This trip has expired.")
+
+    try:
+        return _accept_trip_atomic(
+            trip_id=trip_id,
+            captain=captain,
+        )
+    except _ExpiredTripRequest:
+        if expire_trip_if_needed(trip_id=trip_id):
+            raise ValidationError("This trip has expired.")
+        raise ValidationError("This trip is no longer available.")
+
+
+@transaction.atomic
+def _accept_trip_atomic(*, trip_id, captain):
+    from trips.services.offers import (
+        TRIP_REQUEST_EXPIRY_MINUTES,
+        _ExpiredTripRequest,
+    )
+
     trip = Trip.objects.select_for_update().get(pk=trip_id)
     captain = CaptainProfile.objects.select_for_update().get(
         pk=captain.pk
     )
 
-    if trip.status != Trip.Status.REQUESTED:
+    if (
+        trip.status == Trip.Status.REQUESTED
+        and trip.captain_id is None
+        and trip.requested_at
+        <= timezone.now()
+        - timedelta(minutes=TRIP_REQUEST_EXPIRY_MINUTES)
+    ):
+        raise _ExpiredTripRequest(trip.pk)
+
+    if (
+        trip.status != Trip.Status.REQUESTED
+        or trip.captain_id is not None
+    ):
         raise ValidationError("This trip is no longer available.")
 
     if captain.approval_status != CaptainProfile.ApprovalStatus.APPROVED:
@@ -48,14 +95,26 @@ def accept_trip(*, trip_id, captain):
     commission_config = CommissionConfig.objects.filter(
         is_active=True
     ).order_by("id").first()
+
     if commission_config is None:
         raise ValidationError(
             "No active commission configuration exists."
         )
-    trip.commission_percentage = commission_config.percentage
 
+    if trip.estimated_fare is None:
+        raise ValidationError("The trip has no estimated fare.")
+
+    if (
+        not trip.estimated_fare.is_finite()
+        or trip.estimated_fare <= 0
+        or trip.estimated_fare >= Decimal("100000000")
+    ):
+        raise ValidationError("The estimated fare is invalid.")
+
+    trip.commission_percentage = commission_config.percentage
     trip.captain = captain
     trip.vehicle = vehicle
+    trip.agreed_fare = trip.estimated_fare
     trip.status = Trip.Status.ACCEPTED
     trip.accepted_at = timezone.now()
 
@@ -63,12 +122,14 @@ def accept_trip(*, trip_id, captain):
         update_fields=[
             "captain",
             "vehicle",
+            "agreed_fare",
             "status",
             "accepted_at",
             "commission_percentage",
             "updated_at",
         ]
     )
+
     reserve_trip_commission(trip_id=trip.pk)
     return trip
 
@@ -87,6 +148,21 @@ def mark_captain_arriving(*, trip_id, captain):
 
     trip.status = Trip.Status.ARRIVING
     trip.save(update_fields=["status", "updated_at"])
+
+    # Notify customer of status change
+    notification = create_notification(
+        user=trip.customer.user,
+        type=Notification.Type.TRIP_STATUS_CHANGED,
+        title="تحديث حالة الرحلة",
+        message=f"الرحلة #{trip.pk}: الكابتن جاري الوصول",
+        payload={
+            "trip_id": trip.pk,
+            "status": Trip.Status.ARRIVING,
+        },
+    )
+    transaction.on_commit(
+        lambda n=notification: async_to_sync(dispatch_notification_websocket)(n)
+    )
     return trip
 
 
@@ -104,6 +180,21 @@ def mark_captain_arrived(*, trip_id, captain):
 
     trip.status = Trip.Status.ARRIVED
     trip.save(update_fields=["status", "updated_at"])
+
+    # Notify customer of status change
+    notification = create_notification(
+        user=trip.customer.user,
+        type=Notification.Type.TRIP_STATUS_CHANGED,
+        title="تحديث حالة الرحلة",
+        message=f"الرحلة #{trip.pk}: الكابتن وصل",
+        payload={
+            "trip_id": trip.pk,
+            "status": Trip.Status.ARRIVED,
+        },
+    )
+    transaction.on_commit(
+        lambda n=notification: async_to_sync(dispatch_notification_websocket)(n)
+    )
     return trip
 
 
@@ -124,9 +215,22 @@ def start_trip(*, trip_id, captain):
     trip.save(
         update_fields=["status", "started_at", "updated_at"]
     )
+
+    # Notify customer of status change
+    notification = create_notification(
+        user=trip.customer.user,
+        type=Notification.Type.TRIP_STATUS_CHANGED,
+        title="تحديث حالة الرحلة",
+        message=f"الرحلة #{trip.pk}: بدأت",
+        payload={
+            "trip_id": trip.pk,
+            "status": Trip.Status.IN_PROGRESS,
+        },
+    )
+    transaction.on_commit(
+        lambda n=notification: async_to_sync(dispatch_notification_websocket)(n)
+    )
     return trip
-
-
 
 
 @transaction.atomic
@@ -170,8 +274,63 @@ def complete_trip(*, trip_id, captain, final_fare=None):
 
     record = create_trip_financial_record(trip_id=trip.pk)
 
-    deduct_trip_commission(
-        trip_financial_record_id=record.pk,
+    try:
+        with transaction.atomic():
+            deduct_trip_commission(
+                trip_financial_record_id=record.pk,
+            )
+    except InsufficientCommissionBalance:
+        wallet = (
+            CaptainWallet.objects.select_for_update()
+            .filter(captain=trip.captain)
+            .first()
+        )
+
+        if wallet is None:
+            raise ValidationError("The captain wallet does not exist.")
+
+        reference = f"trip-commission-due:{record.pk}"
+        existing_due = FinancialTransaction.objects.filter(
+            reference=reference
+        ).first()
+
+        if existing_due is None:
+            FinancialTransaction.objects.create(
+                captain=trip.captain,
+                wallet=wallet,
+                financial_record=record,
+                transaction_type=(
+                    FinancialTransaction.TransactionType.COMMISSION_DUE
+                ),
+                amount=record.commission_amount,
+                reference=reference,
+                description=f"Outstanding commission for trip #{trip.pk}",
+            )
+        elif (
+            existing_due.captain_id != trip.captain_id
+            or existing_due.wallet_id != wallet.pk
+            or existing_due.financial_record_id != record.pk
+            or existing_due.transaction_type
+            != FinancialTransaction.TransactionType.COMMISSION_DUE
+            or existing_due.amount != record.commission_amount
+        ):
+            raise ValidationError(
+                "The outstanding commission transaction is inconsistent."
+            )
+
+    # Notify customer of trip completion
+    notification = create_notification(
+        user=trip.customer.user,
+        type=Notification.Type.TRIP_STATUS_CHANGED,
+        title="تحديث حالة الرحلة",
+        message=f"الرحلة #{trip.pk}: تم الإكمال",
+        payload={
+            "trip_id": trip.pk,
+            "status": Trip.Status.COMPLETED,
+        },
+    )
+    transaction.on_commit(
+        lambda n=notification: async_to_sync(dispatch_notification_websocket)(n)
     )
 
     return trip
@@ -230,5 +389,33 @@ def cancel_trip(*, trip_id, cancelled_by, reason):
 
     if trip.captain_id is not None:
         release_trip_commission_reservation(trip_id=trip.pk)
+
+    # Notify the non-actor party of trip cancellation.
+    # Never notify the actor who initiated the cancellation.
+    recipient_users = []
+    if is_customer and trip.captain_id is not None:
+        recipient_users.append(trip.captain.user)
+    elif is_captain:
+        recipient_users.append(trip.customer.user)
+    elif is_support:
+        recipient_users.append(trip.customer.user)
+        if trip.captain_id is not None:
+            recipient_users.append(trip.captain.user)
+
+    for recipient_user in recipient_users:
+        notification = create_notification(
+            user=recipient_user,
+            type=Notification.Type.TRIP_STATUS_CHANGED,
+            title="تحديث حالة الرحلة",
+            message=f"الرحلة #{trip.pk}: تم الإلغاء",
+            payload={
+                "trip_id": trip.pk,
+                "status": Trip.Status.CANCELLED,
+                "cancelled_by": cancelled_by.pk,
+            },
+        )
+        transaction.on_commit(
+            lambda n=notification: async_to_sync(dispatch_notification_websocket)(n)
+        )
 
     return trip

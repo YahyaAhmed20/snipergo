@@ -1,145 +1,131 @@
+{% extends "base.html" %}
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Captain Documents | SNIPER GO</title>
-    <style>
-        * { box-sizing: border-box; }
-        body {
-            margin: 0;
-            padding: 24px;
-            font-family: Arial, sans-serif;
-            background: #f3f5f9;
-            color: #172033;
-        }
-        .container { max-width: 850px; margin: auto; }
-        .card {
-            background: white;
-            padding: 24px;
-            margin-bottom: 20px;
-            border-radius: 14px;
-            box-shadow: 0 4px 18px rgba(0,0,0,.05);
-        }
-        h1, h2 { margin-top: 0; }
-        .brand { color: #e0a000; font-weight: bold; }
-        label {
-            display: block;
-            margin: 16px 0 7px;
-            font-weight: bold;
-        }
-        input, select {
-            width: 100%;
-            padding: 12px;
-            border: 1px solid #d4d9e2;
-            border-radius: 8px;
-        }
-        button, .link {
-            display: inline-block;
-            margin-top: 18px;
-            padding: 12px 18px;
-            border: 0;
-            border-radius: 8px;
-            background: #172033;
-            color: white;
-            text-decoration: none;
-            cursor: pointer;
-        }
-        .messages { padding: 0; list-style: none; }
-        .messages li {
-            background: #fff4d6;
-            padding: 12px;
-            border-radius: 8px;
-            margin-bottom: 8px;
-        }
-        .document {
-            border-top: 1px solid #e5e7eb;
-            padding: 16px 0;
-        }
-        .status { font-weight: bold; }
-        .errorlist { color: #b42318; }
-        .help { color: #687386; font-size: 14px; }
-    </style>
-</head>
-<body>
-<div class="container">
-    <p class="brand">SNIPER GO</p>
-    <h1>Captain Documents</h1>
-    <p>Upload your documents for account verification.</p>
+{% block title %}مستنداتي | SNIPER GO{% endblock %}
 
-    {% if messages %}
-        <ul class="messages">
-            {% for message in messages %}
-                <li>{{ message }}</li>
-            {% endfor %}
+{% block header %}
+<header class="sg-navbar">
+    <div class="sg-container sg-navbar-content">
+        <div>
+            <h1>SNIPER GO</h1>
+            <p>مستندات الكابتن والتحقق من الحساب</p>
+        </div>
+        <a class="sg-button sg-button-secondary"
+           href="{% url 'accounts:dashboard' %}">
+            لوحة التحكم
+        </a>
+    </div>
+</header>
+{% endblock %}
+
+{% block content %}
+<div class="sg-page-heading">
+    <div>
+        <h1>مستنداتي</h1>
+        <p>ارفع المستندات المطلوبة وتابع حالة مراجعتها.</p>
+    </div>
+</div>
+
+<section class="sg-card" style="margin-bottom: 24px; border-right: 4px solid #1570ef;">
+    <h2>المستندات المطلوبة لتفعيل حساب الكابتن</h2>
+
+    <p class="sg-muted">
+        لتفعيل حسابك والبدء في استقبال الرحلات، يجب رفع المستندات الأربعة التالية:
+    </p>
+
+    <ol style="line-height: 2.2; padding-right: 24px;">
+        <li>بطاقة الرقم القومي (الوجه الأمامي والخلفي).</li>
+        <li>رخصة القيادة الخاصة بالكابتن.</li>
+        <li>رخصة المركبة المستخدمة في الرحلات.</li>
+        <li>صحيفة الحالة الجنائية (فيش وتشبيه).</li>
+    </ol>
+
+    <div class="sg-alert">
+        <strong>ملاحظات مهمة:</strong>
+        <ul style="line-height: 2; padding-right: 20px; margin-bottom: 0;">
+            <li>تأكد من وضوح جميع البيانات والصور.</li>
+            <li>ارفع المستند الصحيح تحت نوع المستند المطابق له.</li>
+            <li>الصيغ المدعومة PDF وJPG وJPEG وPNG، بحد أقصى 10 ميجابايت.</li>
+            <li>لن يتم تفعيل حسابك قبل رفع المستندات الأربعة وموافقة الإدارة عليها جميعًا.</li>
         </ul>
-    {% endif %}
+    </div>
 
-    <section class="card">
-        <h2>Upload a document</h2>
+    <p class="sg-muted">
+        يمكنك متابعة حالة كل مستند من قسم «مستنداتي».
+    </p>
+</section>
 
-        <form method="post" enctype="multipart/form-data">
-            {% csrf_token %}
+<section class="sg-card">
+    <h2>رفع مستند جديد</h2>
+    <p class="sg-muted">
+        تأكد من وضوح الصور وصحة البيانات قبل الإرسال.
+    </p>
 
-            {{ form.non_field_errors }}
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        {{ form.non_field_errors }}
 
-            <label for="{{ form.document_type.id_for_label }}">
-                Document type
-            </label>
-            {{ form.document_type }}
-            {{ form.document_type.errors }}
+        <label for="{{ form.document_type.id_for_label }}">
+            نوع المستند
+        </label>
+        {{ form.document_type }}
+        {{ form.document_type.errors }}
 
-            <label for="{{ form.file.id_for_label }}">
-                Choose file
-            </label>
-            {{ form.file }}
-            {{ form.file.errors }}
-            <p class="help">PDF, JPG, JPEG or PNG. Maximum size: 10 MB.</p>
+        <label for="{{ form.file.id_for_label }}">
+            ملف المستند
+        </label>
+        {{ form.file }}
+        {{ form.file.errors }}
+        <p class="sg-muted">
+            الصيغ المدعومة: PDF وJPG وJPEG وPNG، بحد أقصى 10 ميجابايت.
+        </p>
 
-            <label for="{{ form.expires_at.id_for_label }}">
-                Expiration date (optional)
-            </label>
-            {{ form.expires_at }}
-            {{ form.expires_at.errors }}
+        <label for="{{ form.expires_at.id_for_label }}">
+            تاريخ انتهاء الصلاحية (اختياري)
+        </label>
+        {{ form.expires_at }}
+        {{ form.expires_at.errors }}
 
-            <button type="submit">Upload Document</button>
-        </form>
-    </section>
+        <button type="submit">رفع المستند</button>
+    </form>
+</section>
 
-    <section class="card">
-        <h2>My Documents</h2>
+<section class="sg-card" style="margin-top: 24px;">
+    <h2>المستندات المرفوعة</h2>
 
+    <div class="sg-list">
         {% for document in documents %}
-            <div class="document">
-                <strong>{{ document.get_document_type_display }}</strong>
+            <article class="sg-card">
+                <h3>{{ document.get_document_type_display }}</h3>
+
                 <p>
-                    Status:
-                    <span class="status">
-                        {{ document.get_review_status_display }}
-                    </span>
+                    <strong>حالة المراجعة:</strong>
+                    {{ document.get_review_status_display }}
                 </p>
 
                 {% if document.expires_at %}
-                    <p>Expires: {{ document.expires_at|date:"d/m/Y" }}</p>
+                    <p>
+                        <strong>تاريخ الانتهاء:</strong>
+                        {{ document.expires_at|date:"d/m/Y" }}
+                    </p>
                 {% endif %}
 
                 {% if document.rejection_reason %}
-                    <p>Rejection reason: {{ document.rejection_reason }}</p>
+                    <div class="sg-alert sg-alert-error">
+                        <strong>سبب الرفض:</strong>
+                        {{ document.rejection_reason }}
+                    </div>
                 {% endif %}
 
-                <p class="help">
-                    Submitted: {{ document.created_at|date:"d/m/Y H:i" }}
+                <p class="sg-muted">
+                    تاريخ الرفع:
+                    {{ document.created_at|date:"d/m/Y H:i" }}
                 </p>
-            </div>
+            </article>
         {% empty %}
-            <p>You have not uploaded any documents yet.</p>
+            <p class="sg-muted">
+                لم ترفع أي مستندات حتى الآن.
+            </p>
         {% endfor %}
-    </section>
-
-    <a class="link" href="{% url 'accounts:dashboard' %}">
-        Back to Dashboard
-    </a>
-</div>
-</body>
-</html>
+    </div>
+</section>
+{% endblock %}

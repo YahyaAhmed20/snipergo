@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+
+{% block title %}محفظتي | SNIPER GO{% endblock %}
+
+{% block content %}
+<div class="sg-page-heading">
+    <div>
+        <h1>محفظتي</h1>
+        <p>تابع رصيدك وأرباحك وسجل معاملاتك المالية.</p>
+    </div>
+    <a href="{% url 'accounts:dashboard' %}" class="sg-button-secondary sg-wallet-back">
+        العودة إلى لوحة التحكم
+    </a>
+</div>
+
+{% if messages %}
+    <div class="sg-list" style="margin-bottom: 20px;">
+        {% for message in messages %}
+            <div class="sg-alert {% if message.tags == 'success' %}sg-alert-success{% elif message.tags == 'error' %}sg-alert-error{% endif %}">
+                {{ message }}
+            </div>
+        {% endfor %}
+    </div>
+{% endif %}
+
+<section class="wallet-summary sg-wallet">
+    <div class="sg-wallet-heading">
+        <h2>الرصيد الحالي</h2>
+        <span>ملخص محفظتك</span>
+    </div>
+
+    {% if wallet %}
+        <div class="sg-wallet-grid">
+            <article class="sg-wallet-card">
+                <span>الرصيد الإجمالي</span>
+                <strong>{{ wallet.balance|floatformat:2 }}</strong>
+                <small>جنيه مصري</small>
+            </article>
+
+            <article class="sg-wallet-card">
+                <span>الرصيد المتاح</span>
+                <strong>{{ wallet.available_balance|floatformat:2 }}</strong>
+                <small>جنيه مصري</small>
+            </article>
+
+            <article class="sg-wallet-card sg-wallet-available">
+                <span>الرصيد المحجوز</span>
+                <strong>{{ wallet.reserved_balance|floatformat:2 }}</strong>
+                <small>جنيه مصري</small>
+            </article>
+        </div>
+    {% else %}
+        <p>المحفظة غير مفعّلة لحسابك حتى الآن.</p>
+    {% endif %}
+</section>
+
+<section class="sg-card" style="margin-top: 24px;">
+    <h2>ملخص الرحلات المكتملة</h2>
+    <p class="sg-muted">
+        إجمالي قيم الرحلات المكتملة والعمولات وأرباحك الصافية.
+        هذه الأرقام لا تمثل رصيد المحفظة القابل للاستخدام.
+    </p>
+
+    <div class="sg-wallet-grid">
+        <article class="sg-wallet-card">
+            <span>إجمالي قيمة الرحلات</span>
+            <strong>{{ financial_totals.total_gross_fare|default_if_none:"0.00"|floatformat:2 }}</strong>
+            <small>جنيه مصري</small>
+        </article>
+
+        <article class="sg-wallet-card">
+            <span>إجمالي العمولات</span>
+            <strong>{{ financial_totals.total_commission|default_if_none:"0.00"|floatformat:2 }}</strong>
+            <small>جنيه مصري</small>
+        </article>
+
+        <article class="sg-wallet-card sg-wallet-available">
+            <span>صافي أرباحك</span>
+            <strong>{{ financial_totals.total_captain_earnings|default_if_none:"0.00"|floatformat:2 }}</strong>
+            <small>جنيه مصري</small>
+        </article>
+    </div>
+</section>
+
+<section class="sg-card" style="margin-top: 24px;">
+    <h2>شحن المحفظة</h2>
+    <p class="sg-muted">
+        اختر طريقة الشحن المناسبة لك. تتم إضافة الرصيد بعد تأكيد العملية.
+    </p>
+
+    <div class="sg-actions">
+        <a href="{% url 'accounts:dashboard' %}#paymob-topup-form" class="sg-button">
+            شحن إلكتروني
+        </a>
+        <a href="{% url 'accounts:request_cash_topup' %}" class="sg-button sg-button-secondary">
+            طلب إيداع نقدي
+        </a>
+    </div>
+</section>
+
+<section class="sg-card" style="margin-top: 24px;">
+    <h2>سجل المعاملات المالية</h2>
+    <p class="sg-muted">آخر 100 معاملة على محفظتك.</p>
+
+    <div class="sg-list">
+        {% for transaction in transactions %}
+            <article class="sg-history-row">
+                <div class="sg-history-main">
+                    <span class="sg-history-type">{{ transaction.type_label }}</span>
+                    {% if transaction.trip_id %}
+                        <span class="sg-history-meta">رحلة رقم {{ transaction.trip_id }}</span>
+                    {% elif transaction.description %}
+                        <span class="sg-history-meta">{{ transaction.description }}</span>
+                    {% endif %}
+                    <span class="sg-history-date">{{ transaction.created_at|date:"d/m/Y H:i" }}</span>
+                </div>
+                <div class="sg-history-amount" dir="ltr">
+                    {{ transaction.amount|floatformat:2 }} جنيه
+                </div>
+            </article>
+        {% empty %}
+            <p class="sg-muted">لا توجد معاملات مالية حتى الآن.</p>
+        {% endfor %}
+    </div>
+</section>
+
+<section class="sg-card" style="margin-top: 24px;">
+    <h2>سجل طلبات الشحن</h2>
+
+    <div class="sg-list">
+        {% for topup in topups %}
+            <article class="sg-history-row">
+                <div class="sg-history-main">
+                    <span class="sg-history-type">{{ topup.method_label }}</span>
+                    <span class="sg-history-meta">{{ topup.reference }}</span>
+                    <span class="sg-history-date">{{ topup.created_at|date:"d/m/Y H:i" }}</span>
+                </div>
+                <div class="sg-history-side">
+                    <span class="sg-status {% if topup.status == 'COMPLETED' %}sg-status-success{% elif topup.status == 'REJECTED' %}sg-status-danger{% else %}sg-status-pending{% endif %}">
+                        {{ topup.status_label }}
+                    </span>
+                    <span class="sg-history-amount" dir="ltr">
+                        {{ topup.amount|floatformat:2 }} جنيه
+                    </span>
+                </div>
+            </article>
+        {% empty %}
+            <p class="sg-muted">لا توجد طلبات شحن حتى الآن.</p>
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}

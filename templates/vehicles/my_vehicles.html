@@ -1,49 +1,78 @@
+{% extends "base.html" %}
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>SNIPER GO - My Vehicles</title>
-</head>
-<body>
-    <h1>SNIPER GO</h1>
-    <h2>Register a Vehicle</h2>
+{% block title %}مركباتي | SNIPER GO{% endblock %}
 
-    {% if messages %}
-        {% for message in messages %}
-            <p>{{ message }}</p>
-        {% endfor %}
-    {% endif %}
+{% block header %}
+<header class="sg-navbar">
+    <div class="sg-container sg-navbar-content">
+        <div>
+            <h1>SNIPER GO</h1>
+            <p>إدارة مركبات الكابتن</p>
+        </div>
+        <a class="sg-button sg-button-secondary"
+           href="{% url 'accounts:dashboard' %}">
+            العودة إلى لوحة التحكم
+        </a>
+    </div>
+</header>
+{% endblock %}
+
+{% block content %}
+<div class="sg-page-heading">
+    <div>
+        <h1>مركباتي</h1>
+        <p>سجّل مركبتك وتابع حالة اعتمادها لاستقبال الرحلات.</p>
+    </div>
+</div>
+
+<section class="sg-card">
+    <h2>تسجيل مركبة جديدة</h2>
+    <p class="sg-muted">أدخل بيانات المركبة بدقة.</p>
 
     <form method="post" enctype="multipart/form-data">
         {% csrf_token %}
         {{ form.as_p }}
-        <button type="submit">Register Vehicle</button>
+        <button type="submit">تسجيل المركبة</button>
     </form>
+</section>
 
-    <hr>
+<section class="sg-card" style="margin-top: 24px;">
+    <h2>المركبات المسجلة</h2>
 
-    <h2>My Vehicles</h2>
+    <div class="sg-list">
+        {% for vehicle in vehicles %}
+            <article class="sg-card">
+                <h3>{{ vehicle.brand }} {{ vehicle.model_name }}</h3>
 
-    {% for vehicle in vehicles %}
-        <article>
-            <h3>{{ vehicle.brand }} {{ vehicle.model_name }}</h3>
-            <p>Type: {{ vehicle.get_vehicle_type_display }}</p>
-            <p>Plate: {{ vehicle.plate_number }}</p>
-            <p>Year: {{ vehicle.manufacture_year }}</p>
-            <p>Status: {{ vehicle.get_approval_status_display }}</p>
+                <p>
+                    <strong>نوع المركبة:</strong>
+                    {{ vehicle.get_vehicle_type_display }}
+                </p>
+                <p>
+                    <strong>رقم اللوحة:</strong>
+                    {{ vehicle.plate_number }}
+                </p>
+                <p>
+                    <strong>سنة الصنع:</strong>
+                    {{ vehicle.manufacture_year }}
+                </p>
+                <p>
+                    <strong>حالة الاعتماد:</strong>
+                    {{ vehicle.get_approval_status_display }}
+                </p>
 
-            {% if vehicle.approval_status == "REJECTED" %}
-                <p>Rejection reason: {{ vehicle.rejection_reason }}</p>
-            {% endif %}
-        </article>
-    {% empty %}
-        <p>You have not registered any vehicles yet.</p>
-    {% endfor %}
-
-    <p>
-        <a href="{% url 'accounts:dashboard' %}">Back to Dashboard</a>
-    </p>
-</body>
-</html>
+                {% if vehicle.approval_status == "REJECTED" %}
+                    <div class="sg-alert sg-alert-error">
+                        <strong>سبب الرفض:</strong>
+                        {{ vehicle.rejection_reason|default:"لم يُذكر سبب الرفض." }}
+                    </div>
+                {% endif %}
+            </article>
+        {% empty %}
+            <p class="sg-muted">
+                لم تسجّل أي مركبات حتى الآن.
+            </p>
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}

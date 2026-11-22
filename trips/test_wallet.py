@@ -16,6 +16,7 @@ from trips.services.wallet import (
     deduct_trip_commission,
     release_trip_commission_reservation,
     reserve_trip_commission,
+    settle_due_commissions,
 )
 from accounts.models import CustomerProfile
 
@@ -145,6 +146,175 @@ class WalletServiceTests(TestCase):
                 reference="topup-extreme"
             ).exists()
         )
+        
+        
+        
+    def test_topup_automatically_settles_due_commission(self):
+        self.wallet.balance = Decimal("0.00")
+        self.wallet.save(update_fields=["balance", "updated_at"])
+
+        due_reference = f"trip-commission-due:{self.record.pk}"
+
+        FinancialTransaction.objects.create(
+            captain=self.captain,
+            wallet=self.wallet,
+            financial_record=self.record,
+            transaction_type=(
+                FinancialTransaction.TransactionType.COMMISSION_DUE
+            ),
+            amount=self.record.commission_amount,
+            reference=due_reference,
+            description=(
+                f"Outstanding commission for trip #{self.trip.pk}"
+            ),
+        )
+
+        # TestCase delays on_commit callbacks until explicitly executed.
+        with self.captureOnCommitCallbacks(execute=True):
+            credit_wallet(
+                captain=self.captain,
+                amount="10.00",
+                reference="topup-settle-due-test",
+            )
+
+        self.wallet.refresh_from_db()
+        self.record.refresh_from_db()
+
+        self.assertEqual(
+            self.record.commission_status,
+            TripFinancialRecord.CommissionStatus.COLLECTED,
+        )
+        self.assertEqual(self.wallet.balance, Decimal("0.00"))
+        self.assertEqual(self.wallet.reserved_balance, Decimal("0.00"))
+
+        self.assertEqual(
+            FinancialTransaction.objects.filter(
+                reference=f"trip-commission:{self.record.pk}",
+                transaction_type=(
+                    FinancialTransaction.TransactionType.COMMISSION_DEDUCTION
+                ),
+            ).count(),
+            1,
+        )
+
+
+
+
+
+    def test_invalid_due_commission_does_not_block_other_settlements(self):
+        # Create a second completed trip with a valid financial record.
+        other_trip = Trip.objects.create(
+            customer=self.trip.customer,
+            captain=self.captain,
+            pickup_address="Other Pickup",
+            pickup_latitude=Decimal("29.9670"),
+            pickup_longitude=Decimal("32.5498"),
+            destination_address="Other Destination",
+            destination_latitude=Decimal("29.9800"),
+            destination_longitude=Decimal("32.5600"),
+            status=Trip.Status.COMPLETED,
+            final_fare=Decimal("100.00"),
+            commission_percentage=Decimal("10.00"),
+        )
+        other_record = create_trip_financial_record(
+            trip_id=other_trip.pk,
+        )
+
+        # First due transaction has an inconsistent amount.
+        FinancialTransaction.objects.create(
+            captain=self.captain,
+            wallet=self.wallet,
+            financial_record=self.record,
+            transaction_type=(
+                FinancialTransaction.TransactionType.COMMISSION_DUE
+            ),
+            amount=Decimal("9.99"),
+            reference=f"test-invalid-due:{self.record.pk}",
+        )
+
+        # Second due transaction is valid.
+        FinancialTransaction.objects.create(
+            captain=self.captain,
+            wallet=self.wallet,
+            financial_record=other_record,
+            transaction_type=(
+                FinancialTransaction.TransactionType.COMMISSION_DUE
+            ),
+            amount=other_record.commission_amount,
+            reference=f"test-valid-due:{other_record.pk}",
+        )
+
+        with self.assertLogs("trips.services.wallet", level="ERROR"):
+            settle_due_commissions(captain=self.captain)
+
+        self.record.refresh_from_db()
+        other_record.refresh_from_db()
+        self.wallet.refresh_from_db()
+
+        self.assertEqual(
+            self.record.commission_status,
+            TripFinancialRecord.CommissionStatus.PENDING,
+        )
+        self.assertEqual(
+            other_record.commission_status,
+            TripFinancialRecord.CommissionStatus.COLLECTED,
+        )
+        self.assertTrue(
+            FinancialTransaction.objects.filter(
+                reference=f"trip-commission:{other_record.pk}",
+                transaction_type=(
+                    FinancialTransaction.TransactionType.COMMISSION_DEDUCTION
+                ),
+            ).exists()
+        )
+        self.assertEqual(self.wallet.balance, Decimal("90.00"))
+
+
+
+        
+    def test_duplicate_due_commissions_do_not_deduct_twice(self):
+        self.wallet.balance = Decimal("100.00")
+        self.wallet.save(update_fields=["balance", "updated_at"])
+
+        for reference in (
+            f"trip-commission-due:{self.record.pk}",
+            f"trip-commission-due-duplicate:{self.record.pk}",
+        ):
+            FinancialTransaction.objects.create(
+                captain=self.captain,
+                wallet=self.wallet,
+                financial_record=self.record,
+                transaction_type=(
+                    FinancialTransaction.TransactionType.COMMISSION_DUE
+                ),
+                amount=self.record.commission_amount,
+                reference=reference,
+                description="Test duplicate outstanding commission",
+            )
+
+        settle_due_commissions(captain=self.captain)
+
+        self.wallet.refresh_from_db()
+        self.record.refresh_from_db()
+
+        self.assertEqual(
+            self.record.commission_status,
+            TripFinancialRecord.CommissionStatus.COLLECTED,
+        )
+
+        self.assertEqual(self.wallet.balance, Decimal("90.00"))
+
+        self.assertEqual(
+            FinancialTransaction.objects.filter(
+                financial_record=self.record,
+                transaction_type=(
+                    FinancialTransaction.TransactionType.COMMISSION_DEDUCTION
+                ),
+            ).count(),
+            1,
+        )
+
+
 
 
     def test_deducts_commission_once(self):
@@ -166,6 +336,61 @@ class WalletServiceTests(TestCase):
             1,
         )
 
+
+
+
+
+    def test_topup_succeeds_when_balance_is_still_insufficient_for_due_commission(self):
+        self.wallet.balance = Decimal("0.00")
+        self.wallet.save(update_fields=["balance", "updated_at"])
+
+        FinancialTransaction.objects.create(
+            captain=self.captain,
+            wallet=self.wallet,
+            financial_record=self.record,
+            transaction_type=(
+                FinancialTransaction.TransactionType.COMMISSION_DUE
+            ),
+            amount=self.record.commission_amount,
+            reference=f"trip-commission-due:{self.record.pk}",
+            description=(
+                f"Outstanding commission for trip #{self.trip.pk}"
+            ),
+        )
+
+        with self.captureOnCommitCallbacks(execute=True):
+            wallet = credit_wallet(
+                captain=self.captain,
+                amount="5.00",
+                reference="topup-insufficient-due-test",
+            )
+
+        wallet.refresh_from_db()
+        self.record.refresh_from_db()
+
+        self.assertEqual(wallet.balance, Decimal("5.00"))
+        self.assertEqual(
+            self.record.commission_status,
+            TripFinancialRecord.CommissionStatus.PENDING,
+        )
+        self.assertTrue(
+            FinancialTransaction.objects.filter(
+                reference="topup-insufficient-due-test",
+                transaction_type=(
+                    FinancialTransaction.TransactionType.WALLET_TOPUP
+                ),
+            ).exists()
+        )
+        self.assertFalse(
+            FinancialTransaction.objects.filter(
+                reference=f"trip-commission:{self.record.pk}",
+                transaction_type=(
+                    FinancialTransaction.TransactionType.COMMISSION_DEDUCTION
+                ),
+            ).exists()
+        )
+    
+    
     def test_insufficient_balance_does_not_create_deduction(self):
         self.wallet.balance = Decimal("9.00")
         self.wallet.save(update_fields=["balance"])

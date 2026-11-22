@@ -1,0 +1,393 @@
+{% extends "base.html" %}
+
+{% block title %}إشعاراتي | SNIPER GO{% endblock %}
+
+{% block content %}
+<section class="sg-card">
+    <div class="sg-page-heading">
+        <div>
+            <h1>إشعاراتي</h1>
+            <p>تابع إشعارات رحلاتك وعروضك وتقييماتك</p>
+        </div>
+        {% if unread_count > 0 %}
+        <button type="button" id="mark-all-read-btn" class="sg-button sg-button-secondary">
+            تحديد الكل كمقروء (<span id="unread-count-badge">{{ unread_count }}</span>)
+        </button>
+        {% else %}
+        <button type="button" id="mark-all-read-btn" class="sg-button sg-button-secondary" disabled>
+            تحديد الكل كمقروء
+        </button>
+        {% endif %}
+    </div>
+
+    <p id="notifications-loading" class="sg-loading" style="display: none;">جارٍ تحميل الإشعارات...</p>
+
+    <p id="notifications-error" role="status" style="color: #fca5a5; display: none;"></p>
+
+    <div id="notifications-empty" style="display: none; text-align: center; padding: 40px 20px;">
+        <p style="color: var(--sg-muted);">لا توجد إشعارات بعد.</p>
+        <p style="color: var(--sg-muted); font-size: .9rem;">ستظهر هنا الإشعارات الجديدة عند وصولها.</p>
+    </div>
+
+    <div id="notifications-list" class="sg-list">
+        {% for notification in notifications %}
+        <article class="sg-card sg-notification-item{% if not notification.is_read %} sg-notification-unread{% endif %}" data-notification-id="{{ notification.pk }}">
+            <div class="sg-notification-header">
+                <h3>{{ notification.title }}</h3>
+                <span class="sg-status {% if not notification.is_read %}sg-status-warning{% else %}sg-status-success{% endif %}">
+                    {% if not notification.is_read %}غير مقروء{% else %}مقروء{% endif %}
+                </span>
+            </div>
+            <p class="sg-notification-message">{{ notification.message }}</p>
+            <div class="sg-notification-meta">
+                <span class="sg-muted sg-notification-type">{{ notification.type }}</span>
+                <span class="sg-muted sg-notification-date">{{ notification.created_at }}</span>
+            </div>
+            {% if not notification.is_read %}
+            <button type="button" class="sg-button sg-button-secondary sg-mark-read-btn" data-notification-id="{{ notification.pk }}">
+                تحديد كمقروء
+            </button>
+            {% endif %}
+        </article>
+        {% empty %}
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    const listEl = document.getElementById("notifications-list");
+    const emptyEl = document.getElementById("notifications-empty");
+    const loadingEl = document.getElementById("notifications-loading");
+    const errorEl = document.getElementById("notifications-error");
+    const markAllBtn = document.getElementById("mark-all-read-btn");
+    const unreadBadgeEl = document.getElementById("unread-count-badge");
+
+    const csrfToken = "{{ csrf_token }}";
+    const listEndpoint = "{% url 'accounts:notification_list' %}";
+    const unreadCountEndpoint = "{% url 'accounts:notification_unread_count' %}";
+    const markAllReadEndpoint = "{% url 'accounts:notification_mark_all_read' %}";
+    const markReadUrlPattern = "{% url 'accounts:notification_mark_read' 0 %}";
+
+    let stopped = false;
+    let loaded = false;
+    let unreadCount = {{ unread_count }};
+
+    function formatDate(value) {
+        if (!value) return "غير متاح";
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return "غير متاح";
+        return date.toLocaleString("ar-EG", {
+            dateStyle: "short",
+            timeStyle: "short"
+        });
+    }
+
+    function escapeHtml(text) {
+        if (!text) return "";
+        const div = document.createElement("div");
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    function createNotificationItem(n) {
+        const article = document.createElement("article");
+        article.className = "sg-card sg-notification-item" + (n.is_read ? "" : " sg-notification-unread");
+        article.dataset.notificationId = n.id;
+
+        const header = document.createElement("div");
+        header.className = "sg-notification-header";
+
+        const title = document.createElement("h3");
+        title.textContent = escapeHtml(n.title);
+        header.appendChild(title);
+
+        const status = document.createElement("span");
+        status.className = "sg-status " + (n.is_read ? "sg-status-success" : "sg-status-warning");
+        status.textContent = n.is_read ? "مقروء" : "غير مقروء";
+        header.appendChild(status);
+
+        article.appendChild(header);
+
+        const message = document.createElement("p");
+        message.className = "sg-notification-message";
+        message.textContent = escapeHtml(n.message);
+        article.appendChild(message);
+
+        const meta = document.createElement("div");
+        meta.className = "sg-notification-meta";
+
+        const typeSpan = document.createElement("span");
+        typeSpan.className = "sg-muted sg-notification-type";
+        typeSpan.textContent = n.type;
+        meta.appendChild(typeSpan);
+
+        const dateSpan = document.createElement("span");
+        dateSpan.className = "sg-muted sg-notification-date";
+        dateSpan.textContent = formatDate(n.created_at);
+        meta.appendChild(dateSpan);
+
+        article.appendChild(meta);
+
+        if (!n.is_read) {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "sg-button sg-button-secondary sg-mark-read-btn";
+            btn.dataset.notificationId = n.id;
+            btn.textContent = "تحديد كمقروء";
+            btn.addEventListener("click", function () {
+                markAsRead(n.id, article);
+            });
+            article.appendChild(btn);
+        }
+
+        return article;
+    }
+
+    function updateList(notifications) {
+        listEl.replaceChildren();
+        if (notifications.length === 0) {
+            emptyEl.style.display = "";
+            listEl.style.display = "none";
+        } else {
+            emptyEl.style.display = "none";
+            listEl.style.display = "";
+            notifications.forEach(function (n) {
+                listEl.appendChild(createNotificationItem(n));
+            });
+        }
+    }
+
+    function showError(msg) {
+        errorEl.textContent = msg;
+        errorEl.style.display = "";
+        loadingEl.style.display = "none";
+    }
+
+    async function loadNotifications() {
+        if (stopped || loaded) return;
+        loadingEl.style.display = "";
+        errorEl.style.display = "none";
+
+        try {
+            const response = await fetch(listEndpoint, {
+                method: "GET",
+                credentials: "same-origin",
+                headers: { "Accept": "application/json" }
+            });
+
+            let data;
+            try {
+                data = await response.json();
+            } catch {
+                throw new Error("الرد من السيرفر غير متوقع.");
+            }
+
+            if (!response.ok) {
+                throw new Error(data.detail || "فشل تحميل الإشعارات.");
+            }
+
+            if (!Array.isArray(data)) {
+                throw new Error("بيانات الإشعارات غير صحيحة.");
+            }
+
+            updateList(data);
+            loaded = true;
+        } catch (error) {
+            showError(error.message || "مش قادرين نحمّل الإشعارات. جرّب تحديث الصفحة.");
+        } finally {
+            loadingEl.style.display = "none";
+        }
+    }
+
+    async function fetchUnreadCount() {
+        try {
+            const response = await fetch(unreadCountEndpoint, {
+                method: "GET",
+                credentials: "same-origin",
+                headers: { "Accept": "application/json" }
+            });
+            let data;
+            try {
+                data = await response.json();
+            } catch {
+                return;
+            }
+            if (response.ok && typeof data.unread_count === "number") {
+                unreadCount = data.unread_count;
+                updateBadge(unreadCount);
+                if (markAllBtn) {
+                    markAllBtn.disabled = unreadCount === 0;
+                }
+            }
+        } catch {}
+    }
+
+    function updateBadge(count) {
+        if (unreadBadgeEl) {
+            unreadBadgeEl.textContent = count;
+        }
+        if (count > 0) {
+            if (unreadBadgeEl) unreadBadgeEl.style.display = "";
+        } else {
+            if (unreadBadgeEl) unreadBadgeEl.style.display = "none";
+        }
+    }
+
+    function markReadEndpointFor(id) {
+        return markReadUrlPattern.replace(/\/0\//, "/" + id + "/");
+    }
+
+    async function markAsRead(notificationId, articleEl) {
+        try {
+            const response = await fetch(markReadEndpointFor(notificationId), {
+                method: "POST",
+                credentials: "same-origin",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRFToken": csrfToken,
+                    "Accept": "application/json"
+                },
+                body: "{}"
+            });
+
+            let data;
+            try {
+                data = await response.json();
+            } catch {
+                throw new Error("الرد من السيرفر غير متوقع.");
+            }
+
+            if (!response.ok) {
+                throw new Error(data.detail || "فشل تحديد الإشعار كمقروء.");
+            }
+
+            if (articleEl) {
+                articleEl.classList.remove("sg-notification-unread");
+                const statusSpan = articleEl.querySelector(".sg-status");
+                if (statusSpan) {
+                    statusSpan.className = "sg-status sg-status-success";
+                    statusSpan.textContent = "مقروء";
+                }
+                const btn = articleEl.querySelector(".sg-mark-read-btn");
+                if (btn) btn.remove();
+            }
+
+            unreadCount = Math.max(0, unreadCount - 1);
+            updateBadge(unreadCount);
+            if (markAllBtn) {
+                markAllBtn.disabled = unreadCount === 0;
+            }
+
+            // Notify other pages/tabs that a notification was read
+            window.dispatchEvent(new CustomEvent("notification-read", {
+                detail: { notificationId: notificationId }
+            }));
+        } catch (error) {
+            const statusMsg = articleEl ? articleEl.querySelector("p") : null;
+            if (statusMsg) {
+                statusMsg.textContent = error.message || "الفشل في تحديد الإشعار.";
+                statusMsg.style.color = "#fca5a5";
+            }
+        }
+    }
+
+    async function markAllRead() {
+        if (unreadCount === 0) return;
+
+        try {
+            const response = await fetch(markAllReadEndpoint, {
+                method: "POST",
+                credentials: "same-origin",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRFToken": csrfToken,
+                    "Accept": "application/json"
+                },
+                body: "{}"
+            });
+
+            let data;
+            try {
+                data = await response.json();
+            } catch {
+                throw new Error("الرد من السيرفر غير متوقع.");
+            }
+
+            if (!response.ok) {
+                throw new Error(data.detail || "فشل تحديد الكل كمقروء.");
+            }
+
+            document.querySelectorAll(".sg-notification-item.sg-notification-unread").forEach(function (el) {
+                el.classList.remove("sg-notification-unread");
+                const statusSpan = el.querySelector(".sg-status");
+                if (statusSpan) {
+                    statusSpan.className = "sg-status sg-status-success";
+                    statusSpan.textContent = "مقروء";
+                }
+                const btn = el.querySelector(".sg-mark-read-btn");
+                if (btn) btn.remove();
+            });
+
+            unreadCount = 0;
+            updateBadge(unreadCount);
+            if (markAllBtn) {
+                markAllBtn.disabled = true;
+            }
+
+            window.dispatchEvent(new CustomEvent("notification-read", {
+                detail: { allRead: true }
+            }));
+        } catch (error) {
+            showError(error.message || "فشل تحديد الكل كمقروء.");
+        }
+    }
+
+    function handleIncomingNotification(n) {
+        // Avoid duplicates
+        const existing = document.querySelector(
+            ".sg-notification-item[data-notification-id='" + n.id + "']"
+        );
+        if (existing) return;
+
+        const item = createNotificationItem(n);
+        listEl.prepend(item);
+
+        emptyEl.style.display = "none";
+        listEl.style.display = "";
+
+        unreadCount += 1;
+        updateBadge(unreadCount);
+        if (markAllBtn) {
+            markAllBtn.disabled = false;
+        }
+
+        window.dispatchEvent(new CustomEvent("notification-received", {
+            detail: { notification: n }
+        }));
+    }
+
+    window.addEventListener("notification-received", function (event) {
+        handleIncomingNotification(event.detail.notification);
+    });
+
+    if (markAllBtn) {
+        markAllBtn.addEventListener("click", markAllRead);
+    }
+
+    loadNotifications();
+
+    document.addEventListener("visibilitychange", function () {
+        if (!document.hidden) {
+            fetchUnreadCount();
+        }
+    });
+
+    window.addEventListener("pagehide", function () {
+        stopped = true;
+    });
+})();
+</script>
+{% endblock %}
