@@ -1,0 +1,229 @@
+{
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "relation/3062185",
+        "ISO3166-2": "EG-SUZ",
+        "admin_level": "4",
+        "alt_name:ar": "Ù…Ø­Ø§ÙØ¸Ø© Ø§Ù„Ø³ÙˆÙŠØ³",
+        "alt_name:de": "Gouvernement as-Suwais",
+        "alt_name:en": "Suez Governorate",
+        "alt_name:es": "GobernaciÃ³n de Suez",
+        "alt_name:fr": "Gouvernorat de Suez",
+        "alt_name:ru": "Ð¡ÑƒÑÑ† (Ð¼ÑƒÑ…Ð°Ñ„Ð°Ð·Ð°)",
+        "alt_name:ur": "Ù…Ø­Ø§ÙØ¸Û Ø³ÙˆØ¦ÛŒØ²",
+        "boundary": "administrative",
+        "name": "السويس",
+        "name:ar": "Ø§Ù„Ø³ÙˆÙŠØ³",
+        "name:arz": "Ù…Ø­Ø§ÙØ¸Ø© Ø§Ù„Ø³ÙˆÙŠØ³",
+        "name:az": "SÃ¼veyÅŸ",
+        "name:azb": "Ø³ÙˆØ¦Ø² Ø§ÙˆØ³ØªØ§Ù†ÛŒ",
+        "name:be": "Ð¡ÑƒÑÑ†",
+        "name:be-tarask": "Ð¡ÑƒÑÑ†",
+        "name:bg": "Ð¡ÑƒÐµÑ†",
+        "name:bs": "Suez",
+        "name:ca": "GovernaciÃ³ de Suez",
+        "name:ceb": "As Suways",
+        "name:cs": "Suez",
+        "name:de": "As-Suwais",
+        "name:el": "ÎšÏ…Î²ÎµÏÎ½ÎµÎ¯Î¿ Î£Î¿Ï…Î­Î¶",
+        "name:en": "Suez",
+        "name:eo": "Provinco Suezo",
+        "name:es": "Suez",
+        "name:fa": "Ø§Ø³ØªØ§Ù† Ø³ÙˆØ¦Ø²",
+        "name:fi": "Suezin kuvernementti",
+        "name:fr": "Suez",
+        "name:he": "×¡×•××¥",
+        "name:hi": "à¤¸à¥à¤à¤œà¤¼ à¤®à¥à¤¹à¤¾à¤«à¤¼à¤œà¤¼à¤¾à¤¹",
+        "name:hr": "Suez",
+        "name:hu": "Szuez",
+        "name:hy": "ÕÕ¸Ö‚Õ¥Õ¦",
+        "name:id": "Kegubernuran As Suways",
+        "name:it": "Governatorato di Suez",
+        "name:ja": "ã‚¹ã‚¨ã‚ºçœŒ",
+        "name:ka": "áƒ¡áƒ£áƒ”áƒªáƒ˜áƒ¡ áƒ›áƒ£áƒ°áƒáƒ¤áƒáƒ–áƒ",
+        "name:ko": "ìˆ˜ì—ì¦ˆì£¼",
+        "name:la": "Suesia",
+        "name:lt": "Sueco muchafaza",
+        "name:mk": "Ð¡ÑƒÐµÑ†",
+        "name:nan": "Suez SÃ©ng",
+        "name:nl": "Suez",
+        "name:no": "Guvernementet Suez",
+        "name:pl": "Suez",
+        "name:pnb": "ØµÙˆØ¨Û Ø³ÙˆÛŒØ²",
+        "name:pt": "Suez",
+        "name:ro": "Guvernoratul Suez",
+        "name:ru": "Ð¡ÑƒÑÑ†",
+        "name:sco": "Suez Govrenorate",
+        "name:sh": "Suez",
+        "name:sk": "GuvernorÃ¡t Suez",
+        "name:sl": "Suez",
+        "name:sr": "Ð¡ÑƒÐµÑ†",
+        "name:sv": "Suez",
+        "name:sw": "Mkoa wa Suez",
+        "name:tr": "SÃ¼veyÅŸ",
+        "name:uk": "ÐœÑƒÑ…Ð°Ñ„Ð°Ð·Ð° Ð¡ÑƒÐµÑ†",
+        "name:ur": "Ø³ÙˆØ¦ÛŒØ²",
+        "name:war": "Suez",
+        "name:wuu": "è‹ä¼Šå£«çœ",
+        "name:zh": "è˜‡ä¼Šå£«çœ",
+        "name:zu": "Suez Governorate",
+        "type": "boundary",
+        "wikidata": "Q31070",
+        "wikipedia": "ar:Ù…Ø­Ø§ÙØ¸Ø© Ø§Ù„Ø³ÙˆÙŠØ³",
+        "wikipedia:ar": "Ù…Ø­Ø§ÙØ¸Ø© Ø§Ù„Ø³ÙˆÙŠØ³",
+        "wikipedia:es": "GobernaciÃ³n de Suez"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              32.5387487,
+              30.2577803
+            ],
+            [
+              32.5196794,
+              30.246814
+            ],
+            [
+              32.4966515,
+              30.2335695
+            ],
+            [
+              32.4580995,
+              30.2063679
+            ],
+            [
+              32.4028777,
+              30.2027155
+            ],
+            [
+              32.3049216,
+              30.2442698
+            ],
+            [
+              32.1794358,
+              30.2452162
+            ],
+            [
+              31.8713494,
+              30.2295534
+            ],
+            [
+              31.897245,
+              30.0659818
+            ],
+            [
+              31.9090054,
+              29.9915076
+            ],
+            [
+              31.9062825,
+              29.7483062
+            ],
+            [
+              31.8445406,
+              29.0105979
+            ],
+            [
+              31.9711097,
+              28.9894901
+            ],
+            [
+              32.1203476,
+              28.9987355
+            ],
+            [
+              32.2806458,
+              29.0409563
+            ],
+            [
+              32.4592914,
+              29.0949737
+            ],
+            [
+              32.5172305,
+              29.1261896
+            ],
+            [
+              32.5771009,
+              29.1371551
+            ],
+            [
+              32.6292461,
+              29.1245025
+            ],
+            [
+              32.6534461,
+              29.1265476
+            ],
+            [
+              32.7976424,
+              29.1387328
+            ],
+            [
+              32.6424738,
+              29.4398078
+            ],
+            [
+              32.5578892,
+              29.6027863
+            ],
+            [
+              32.5397639,
+              29.7200379
+            ],
+            [
+              32.5425004,
+              29.7743715
+            ],
+            [
+              32.6310857,
+              29.8065154
+            ],
+            [
+              32.632246,
+              29.8072323
+            ],
+            [
+              32.7281383,
+              29.8588671
+            ],
+            [
+              32.8003299,
+              29.8972787
+            ],
+            [
+              32.8329848,
+              29.9232502
+            ],
+            [
+              32.8042552,
+              29.994799
+            ],
+            [
+              32.8067447,
+              30.1925665
+            ],
+            [
+              32.7817949,
+              30.2568876
+            ],
+            [
+              32.5452329,
+              30.2615089
+            ],
+            [
+              32.5387487,
+              30.2577803
+            ]
+          ]
+        ]
+      },
+      "id": "relation/3062185"
+    }
+  ],
+  "type": "FeatureCollection"
+}
