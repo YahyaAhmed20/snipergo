@@ -295,6 +295,9 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 AUTH_USER_MODEL = "accounts.User"
 
+# Sites framework configuration (required for allauth)
+SITE_ID = int(os.environ.get("DJANGO_SITE_ID", "1"))
+
 
 if os.name == "nt":
     GDAL_LIBRARY_PATH = (
