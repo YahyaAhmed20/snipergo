@@ -1062,6 +1062,7 @@ cancelTripButton.style.display = cancelTripButton.hidden
                     : null;
 
                 const isExpired =
+                    offer.is_expired === true ||
                     !expiresAt || expiresAt.getTime() <= Date.now();
 
                 if (isExpired) {

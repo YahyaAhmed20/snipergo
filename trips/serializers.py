@@ -209,6 +209,7 @@ class CaptainOfferListSerializer(serializers.ModelSerializer):
         source="captain.user.username",
         read_only=True,
     )
+    is_expired = serializers.SerializerMethodField()
 
     class Meta:
         model = CaptainOffer
@@ -217,10 +218,14 @@ class CaptainOfferListSerializer(serializers.ModelSerializer):
             "captain_username",
             "amount",
             "status",
+            "is_expired",
             "expires_at",
             "created_at",
         ]
         read_only_fields = fields
+
+    def get_is_expired(self, obj):
+        return obj.status == CaptainOffer.Status.EXPIRED
         
         
         
@@ -238,6 +243,7 @@ class CaptainMyOfferSerializer(serializers.ModelSerializer):
         source="trip.status",
         read_only=True,
     )
+    is_expired = serializers.SerializerMethodField()
 
     class Meta:
         model = CaptainOffer
@@ -249,10 +255,14 @@ class CaptainMyOfferSerializer(serializers.ModelSerializer):
             "trip_status",
             "amount",
             "status",
+            "is_expired",
             "expires_at",
             "created_at",
         ]
         read_only_fields = fields
+
+    def get_is_expired(self, obj):
+        return obj.status == CaptainOffer.Status.EXPIRED
 
 
 class TripReviewSerializer(serializers.ModelSerializer):

@@ -45,6 +45,7 @@ from trips.services.lifecycle import (
 from trips.services.offers import (
     accept_captain_offer,
     create_captain_offer,
+    expire_pending_offers_for_trips,
     expire_trip_if_needed,
 )
 from trips.services.reviews import (
@@ -153,6 +154,8 @@ class CaptainOfferListAPIView(generics.ListAPIView):
                 "You do not have permission to view these offers."
             )
 
+        expire_pending_offers_for_trips(trip_ids=[trip.pk])
+
         return (
             CaptainOffer.objects
             .filter(trip=trip)
@@ -180,6 +183,17 @@ class CaptainMyOffersAPIView(generics.ListAPIView):
             raise PermissionDenied(
                 "Captain profile not found."
             )
+
+        pending_trip_ids = list(
+            CaptainOffer.objects
+            .filter(
+                captain=captain,
+                status=CaptainOffer.Status.PENDING,
+            )
+            .values_list("trip_id", flat=True)
+            .distinct()
+        )
+        expire_pending_offers_for_trips(trip_ids=pending_trip_ids)
 
         return (
             CaptainOffer.objects

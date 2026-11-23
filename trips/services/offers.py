@@ -18,7 +18,7 @@ from trips.services.negotiation import calculate_negotiation_range
 from trips.services.wallet import reserve_trip_commission
 
 
-OFFER_EXPIRY_MINUTES = 2
+OFFER_EXPIRY_MINUTES = 15
 TRIP_REQUEST_EXPIRY_MINUTES = 30
 
 
@@ -363,3 +363,33 @@ def expire_offer_if_needed(*, offer_id):
             return True
 
     return False
+
+
+def expire_pending_offers_for_trips(*, trip_ids):
+    """
+    Bulk-expire pending offers whose expiry has passed for the given trips.
+
+    Idempotent and safe under concurrency: only PENDING offers with
+    expires_at <= now are transitioned to EXPIRED. ACCEPTED, REJECTED and
+    already-EXPIRED offers are left untouched. No commission is reserved or
+    deducted here because expiry is independent of the acceptance flow.
+
+    Returns the number of offers transitioned to EXPIRED.
+    """
+    trip_ids = list(trip_ids)
+
+    if not trip_ids:
+        return 0
+
+    now = timezone.now()
+
+    with transaction.atomic():
+        return CaptainOffer.objects.filter(
+            trip_id__in=trip_ids,
+            status=CaptainOffer.Status.PENDING,
+            expires_at__lte=now,
+        ).update(
+            status=CaptainOffer.Status.EXPIRED,
+            responded_at=now,
+            updated_at=now,
+        )

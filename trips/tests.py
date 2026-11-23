@@ -26,6 +26,7 @@ from trips.models import CaptainOffer, FinancialTransaction, Trip, TripPricingCo
 from trips.services.offers import (
     accept_captain_offer,
     create_captain_offer,
+    expire_pending_offers_for_trips,
 )
 
 from trips.models import TripFinancialRecord
@@ -3303,6 +3304,411 @@ class TripAPITests(TestCase):
         trip.refresh_from_db()
         self.assertEqual(trip.status, Trip.Status.REQUESTED)
         self.assertIsNone(trip.captain_id)
+
+    # ===== Offer Lifecycle Tests =====
+
+    def test_offer_expires_after_15_minutes(self):
+        """New offers must be created with 15-minute expiry."""
+        from trips.services.offers import OFFER_EXPIRY_MINUTES
+
+        self.assertEqual(OFFER_EXPIRY_MINUTES, 15)
+
+        captain_user, captain = self.create_approved_captain(
+            username="expiry_15_captain",
+        )
+
+        TripPricingConfig.objects.create(
+            city="Suez",
+            base_fare=Decimal("10.00"),
+            price_per_km=Decimal("5.00"),
+            minimum_fare=Decimal("15.00"),
+            maximum_fare=Decimal("100.00"),
+            is_active=True,
+        )
+
+        trip = Trip.objects.create(
+            customer=self.customer,
+            pickup_address="Suez",
+            pickup_latitude="29.9668",
+            pickup_longitude="32.5498",
+            destination_address="Port Tawfik",
+            destination_latitude="29.9500",
+            destination_longitude="32.5700",
+            estimated_fare=Decimal("50.00"),
+        )
+
+        before = timezone.now()
+        offer = create_captain_offer(
+            trip_id=trip.pk,
+            captain=captain,
+            amount="45.00",
+        )
+
+        # expires_at should be approximately 15 minutes from now
+        delta = offer.expires_at - before
+        self.assertGreaterEqual(delta.total_seconds(), 14 * 60)
+        self.assertLessEqual(delta.total_seconds(), 15 * 60 + 5)
+
+    def test_active_offer_appears_in_customer_list_before_expiry(self):
+        """A pending non-expired offer must appear in offers/list/."""
+        captain_user, captain = self.create_approved_captain(
+            username="active_offer_captain",
+        )
+
+        TripPricingConfig.objects.create(
+            city="Suez",
+            base_fare=Decimal("10.00"),
+            price_per_km=Decimal("5.00"),
+            minimum_fare=Decimal("15.00"),
+            maximum_fare=Decimal("100.00"),
+            is_active=True,
+        )
+
+        trip = Trip.objects.create(
+            customer=self.customer,
+            pickup_address="Suez",
+            pickup_latitude="29.9668",
+            pickup_longitude="32.5498",
+            destination_address="Port Tawfik",
+            destination_latitude="29.9500",
+            destination_longitude="32.5700",
+            estimated_fare=Decimal("50.00"),
+        )
+
+        offer = create_captain_offer(
+            trip_id=trip.pk,
+            captain=captain,
+            amount="45.00",
+        )
+
+        self.api_client.force_authenticate(user=self.customer_user)
+        response = self.api_client.get(f"/api/trips/{trip.pk}/offers/list/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["status"], "PENDING")
+        self.assertFalse(response.data[0]["is_expired"])
+
+    def test_expired_offer_becomes_expired_after_get_read(self):
+        """GET lazy expiry: expired offer is transitioned to EXPIRED on read."""
+        captain_user, captain = self.create_approved_captain(
+            username="expired_lazy_captain",
+        )
+
+        TripPricingConfig.objects.create(
+            city="Suez",
+            base_fare=Decimal("10.00"),
+            price_per_km=Decimal("5.00"),
+            minimum_fare=Decimal("15.00"),
+            maximum_fare=Decimal("100.00"),
+            is_active=True,
+        )
+
+        trip = Trip.objects.create(
+            customer=self.customer,
+            pickup_address="Suez",
+            pickup_latitude="29.9668",
+            pickup_longitude="32.5498",
+            destination_address="Port Tawfik",
+            destination_latitude="29.9500",
+            destination_longitude="32.5700",
+            estimated_fare=Decimal("50.00"),
+        )
+
+        offer = create_captain_offer(
+            trip_id=trip.pk,
+            captain=captain,
+            amount="45.00",
+        )
+
+        # Force the offer to be expired
+        offer.expires_at = timezone.now() - timedelta(minutes=1)
+        offer.save(update_fields=["expires_at"])
+
+        # Before GET, offer is still PENDING in DB
+        offer.refresh_from_db()
+        self.assertEqual(offer.status, CaptainOffer.Status.PENDING)
+
+        # GET offers/list/ should trigger lazy expiry
+        self.api_client.force_authenticate(user=self.customer_user)
+        response = self.api_client.get(f"/api/trips/{trip.pk}/offers/list/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["status"], "EXPIRED")
+        self.assertTrue(response.data[0]["is_expired"])
+
+        # Offer in DB is now EXPIRED
+        offer.refresh_from_db()
+        self.assertEqual(offer.status, CaptainOffer.Status.EXPIRED)
+
+    def test_expired_offer_appears_in_captain_history(self):
+        """Expired offer appears in my-offers/ with EXPIRED status."""
+        captain_user, captain = self.create_approved_captain(
+            username="captain_history_captain",
+        )
+
+        TripPricingConfig.objects.create(
+            city="Suez",
+            base_fare=Decimal("10.00"),
+            price_per_km=Decimal("5.00"),
+            minimum_fare=Decimal("15.00"),
+            maximum_fare=Decimal("100.00"),
+            is_active=True,
+        )
+
+        trip = Trip.objects.create(
+            customer=self.customer,
+            pickup_address="Suez",
+            pickup_latitude="29.9668",
+            pickup_longitude="32.5498",
+            destination_address="Port Tawfik",
+            destination_latitude="29.9500",
+            destination_longitude="32.5700",
+            estimated_fare=Decimal("50.00"),
+        )
+
+        offer = create_captain_offer(
+            trip_id=trip.pk,
+            captain=captain,
+            amount="45.00",
+        )
+
+        # Force expiry
+        offer.expires_at = timezone.now() - timedelta(minutes=1)
+        offer.save(update_fields=["expires_at"])
+
+        # Captain views their offers
+        self.api_client.force_authenticate(user=captain_user)
+        response = self.api_client.get("/api/trips/my-offers/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["status"], "EXPIRED")
+        self.assertTrue(response.data[0]["is_expired"])
+
+    def test_expired_offer_cannot_be_accepted_via_api(self):
+        """Backend rejects acceptance of expired offer via API."""
+        captain_user, captain = self.create_approved_captain(
+            username="expired_accept_captain",
+        )
+
+        TripPricingConfig.objects.create(
+            city="Suez",
+            base_fare=Decimal("10.00"),
+            price_per_km=Decimal("5.00"),
+            minimum_fare=Decimal("15.00"),
+            maximum_fare=Decimal("100.00"),
+            is_active=True,
+        )
+
+        trip = Trip.objects.create(
+            customer=self.customer,
+            pickup_address="Suez",
+            pickup_latitude="29.9668",
+            pickup_longitude="32.5498",
+            destination_address="Port Tawfik",
+            destination_latitude="29.9500",
+            destination_longitude="32.5700",
+            estimated_fare=Decimal("50.00"),
+        )
+
+        offer = create_captain_offer(
+            trip_id=trip.pk,
+            captain=captain,
+            amount="45.00",
+        )
+
+        # Force expiry
+        offer.expires_at = timezone.now() - timedelta(minutes=1)
+        offer.save(update_fields=["expires_at"])
+
+        # Customer tries to accept expired offer
+        self.api_client.force_authenticate(user=self.customer_user)
+        response = self.api_client.post(
+            f"/api/trips/{trip.pk}/offers/{offer.pk}/accept/",
+            {},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("expired", str(response.data).lower())
+
+    def test_trip_stays_requested_after_offer_expires(self):
+        """Trip remains REQUESTED when one offer expires (offer/trip expiry independent)."""
+        captain_user, captain = self.create_approved_captain(
+            username="trip_stays_captain",
+        )
+
+        TripPricingConfig.objects.create(
+            city="Suez",
+            base_fare=Decimal("10.00"),
+            price_per_km=Decimal("5.00"),
+            minimum_fare=Decimal("15.00"),
+            maximum_fare=Decimal("100.00"),
+            is_active=True,
+        )
+
+        trip = Trip.objects.create(
+            customer=self.customer,
+            pickup_address="Suez",
+            pickup_latitude="29.9668",
+            pickup_longitude="32.5498",
+            destination_address="Port Tawfik",
+            destination_latitude="29.9500",
+            destination_longitude="32.5700",
+            estimated_fare=Decimal("50.00"),
+        )
+
+        offer = create_captain_offer(
+            trip_id=trip.pk,
+            captain=captain,
+            amount="45.00",
+        )
+
+        # Force offer expiry
+        offer.expires_at = timezone.now() - timedelta(minutes=1)
+        offer.save(update_fields=["expires_at"])
+
+        # Trigger lazy expiry via GET
+        self.api_client.force_authenticate(user=self.customer_user)
+        self.api_client.get(f"/api/trips/{trip.pk}/offers/list/")
+
+        # Trip must still be REQUESTED
+        trip.refresh_from_db()
+        self.assertEqual(trip.status, Trip.Status.REQUESTED)
+
+        # A second captain can still send an offer
+        captain2_user, captain2 = self.create_approved_captain(
+            username="second_offer_after_expiry_captain",
+        )
+
+        new_offer = create_captain_offer(
+            trip_id=trip.pk,
+            captain=captain2,
+            amount="48.00",
+        )
+
+        self.assertIsNotNone(new_offer.pk)
+        self.assertEqual(new_offer.status, CaptainOffer.Status.PENDING)
+
+    def test_no_commission_reserved_on_offer_expiry(self):
+        """No commission reservation when an offer expires."""
+        captain_user, captain = self.create_approved_captain(
+            username="no_commission_expiry_captain",
+        )
+
+        TripPricingConfig.objects.create(
+            city="Suez",
+            base_fare=Decimal("10.00"),
+            price_per_km=Decimal("5.00"),
+            minimum_fare=Decimal("15.00"),
+            maximum_fare=Decimal("100.00"),
+            is_active=True,
+        )
+
+        trip = Trip.objects.create(
+            customer=self.customer,
+            pickup_address="Suez",
+            pickup_latitude="29.9668",
+            pickup_longitude="32.5498",
+            destination_address="Port Tawfik",
+            destination_latitude="29.9500",
+            destination_longitude="32.5700",
+            estimated_fare=Decimal("50.00"),
+        )
+
+        offer = create_captain_offer(
+            trip_id=trip.pk,
+            captain=captain,
+            amount="45.00",
+        )
+
+        # Force expiry
+        offer.expires_at = timezone.now() - timedelta(minutes=1)
+        offer.save(update_fields=["expires_at"])
+
+        # Trigger lazy expiry
+        self.api_client.force_authenticate(user=self.customer_user)
+        self.api_client.get(f"/api/trips/{trip.pk}/offers/list/")
+
+        # No commission reservation
+        self.assertFalse(
+            FinancialTransaction.objects.filter(
+                reference=f"trip-commission-reserve:{trip.pk}"
+            ).exists()
+        )
+
+        # Wallet unchanged
+        wallet = CaptainWallet.objects.get(captain=captain)
+        self.assertEqual(wallet.reserved_balance, Decimal("0.00"))
+
+    def test_accepted_and_rejected_offers_unchanged_after_bulk_expiry(self):
+        """ACCEPTED and REJECTED offers are not touched by bulk expiry."""
+        captain1_user, captain1 = self.create_approved_captain(
+            username="unchanged_captain1",
+        )
+        captain2_user, captain2 = self.create_approved_captain(
+            username="unchanged_captain2",
+        )
+
+        TripPricingConfig.objects.create(
+            city="Suez",
+            base_fare=Decimal("10.00"),
+            price_per_km=Decimal("5.00"),
+            minimum_fare=Decimal("15.00"),
+            maximum_fare=Decimal("100.00"),
+            is_active=True,
+        )
+
+        trip = Trip.objects.create(
+            customer=self.customer,
+            pickup_address="Suez",
+            pickup_latitude="29.9668",
+            pickup_longitude="32.5498",
+            destination_address="Port Tawfik",
+            destination_latitude="29.9500",
+            destination_longitude="32.5700",
+            estimated_fare=Decimal("50.00"),
+        )
+
+        # Create two offers
+        offer1 = create_captain_offer(
+            trip_id=trip.pk,
+            captain=captain1,
+            amount="45.00",
+        )
+        offer2 = create_captain_offer(
+            trip_id=trip.pk,
+            captain=captain2,
+            amount="48.00",
+        )
+
+        # Accept offer1, offer2 becomes REJECTED
+        accept_captain_offer(
+            offer_id=offer1.pk,
+            customer=self.customer,
+        )
+
+        offer1.refresh_from_db()
+        offer2.refresh_from_db()
+        self.assertEqual(offer1.status, CaptainOffer.Status.ACCEPTED)
+        self.assertEqual(offer2.status, CaptainOffer.Status.REJECTED)
+
+        # Force expiry on offer2 (set expires_at in the past)
+        offer2.expires_at = timezone.now() - timedelta(minutes=1)
+        offer2.save(update_fields=["expires_at"])
+
+        # Trigger bulk expiry
+        from trips.services.offers import expire_pending_offers_for_trips
+        expire_pending_offers_for_trips(trip_ids=[trip.pk])
+
+        offer1.refresh_from_db()
+        offer2.refresh_from_db()
+
+        # ACCEPTED and REJECTED must be unchanged
+        self.assertEqual(offer1.status, CaptainOffer.Status.ACCEPTED)
+        self.assertEqual(offer2.status, CaptainOffer.Status.REJECTED)
 
 
 class AddressSearchAPITests(TestCase):
