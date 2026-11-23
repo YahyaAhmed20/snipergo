@@ -193,7 +193,7 @@ if not DEBUG:
             "BACKEND": "django.core.cache.backends.redis.RedisCache",
             "LOCATION": redis_url,
             "OPTIONS": {
-                "DB": 1,
+                "db": 1,
             },
         }
     }
